@@ -1,0 +1,39 @@
+# load configuration from a file
+# -config               
+
+# dump configuration to a file
+# -dumpconfig           
+
+# print help message
+# -h                          false 
+
+# verbose operation
+# -v                          false 
+
+# enable debug message
+# -d                          false 
+
+# start in Dlite debugger
+# -i                          false 
+
+# random number generator seed (0 for timer seed)
+-seed                             1 
+
+# initialize and terminate immediately
+# -q                          false 
+
+# restore EIO trace execution from <fname>
+# -chkpt                     <null> 
+
+# redirect simulator output to file (non-interactive only)
+# -redir:sim              go.simout 
+
+# redirect simulated program output to file
+# -redir:prog            go.progout 
+
+# simulator scheduling priority
+-nice                             0 
+
+# maximum number of inst's to execute
+-max:inst                  10000000 
+
