@@ -381,10 +381,7 @@ sim_main(void)
 			if(r_in[i] != DNA && reg_ready[r_in[i]] >= sim_num_insn){
 				if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
 					continue;}
-				if((reg_ready[r_in[i]]-sim_num_insn) == 1)
-					sim_num_RAW_hazard_q2 ++;
-				else if((reg_ready[r_in[i]]-sim_num_insn) == 0)
-					sim_num_RAW_hazard_q1 ++;
+				sim_num_RAW_hazard_q1 += (reg_ready[r_in[i]]-sim_num_insn) + 1;
 				break;
 			}
 		}
