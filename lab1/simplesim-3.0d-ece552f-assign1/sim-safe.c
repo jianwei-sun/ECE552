@@ -69,6 +69,7 @@
 /* ECE552 Assignment 1 - STATS COUNTERS - BEGIN */
 static counter_t sim_num_RAW_hazard_q1;
 static counter_t sim_num_RAW_hazard_q2;
+static counter_t reg_ready[MD_TOTAL_REGS];
 /* ECE552 Assignment 1 - STATS COUNTERS - END */
 
 /*
@@ -145,11 +146,11 @@ sim_reg_stats(struct stat_sdb_t *sdb)
 
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q1",
 		   "CPI from RAW hazard (q1)",
-		   "1" /* ECE552 - MUST ADD YOUR FORMULA */, NULL);
+		   "(sim_num_insn + sim_num_RAW_hazard_q1) / sim_num_insn", NULL);
 
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q2",
 		   "CPI from RAW hazard (q2)",
-		   "1" /* ECE552 - MUST ADD YOUR FORMULA */, NULL);
+		   "(sim_num_insn + sim_num_RAW_hazard_q2) / sim_num_insn", NULL);
 
   /* ECE552 Assignment 1 - END CODE */
 
@@ -309,7 +310,7 @@ sim_main(void)
 {
 /* ECE552 Assignment 1 - BEGIN CODE*/
   int r_out[2], r_in[3];
-  md_inst_t[3] inst_history;
+ 
 /* ECE552 Assignment 1 - END CODE*/
   md_inst_t inst;
   register md_addr_t addr;
@@ -338,11 +339,6 @@ sim_main(void)
 
       /* get the next instruction to execute */
       MD_FETCH_INST(inst, mem, regs.regs_PC);
-/* ECE552 Assignment 1 - BEGIN CODE*/
-      inst_history[2] = inst_history[1];
-      inst_history[1] = inst_history[0];
-      inst_history[0] = inst;
-/* ECE552 Assignment 1 - END CODE*/
 
       /* keep an instruction count */
       sim_num_insn++;
@@ -360,14 +356,14 @@ sim_main(void)
 
       switch (op)
 	{
+/* ECE552 Assignment 1 - BEGIN CODE*/
 #define DEFINST(OP,MSK,NAME,OPFORM,RES,FLAGS,O1,O2,I1,I2,I3)		\
 	case OP:							\
-/* ECE552 Assignment 1 - BEGIN CODE*/
 	  r_out[0] = (O1); r_out[1] = (O2);                             \
 	  r_in[0] = (I1); r_in[1] = (I2); r_in[2] = (I3);               \
-/* ECE552 Assignment 1 - END CODE*/
           SYMCAT(OP,_IMPL);						\
           break;
+/* ECE552 Assignment 1 - END CODE*/
 #define DEFLINK(OP,MSK,NAME,MASK,SHIFT)					\
         case OP:							\
           panic("attempted to execute a linking opcode");
@@ -379,8 +375,29 @@ sim_main(void)
 	  panic("attempted to execute a bogus opcode");
       }
 /* ECE552 Assignment 1 - BEGIN CODE*/
-	/*If the previous instruction's destination register is one of the current instruction's source registers */
-	
+	{
+		int i;
+		for(i=0;i<3;i++){
+			if(r_in[i] != DNA && reg_ready[r_in[i]] >= sim_num_insn){
+				if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
+					continue;}
+				if((reg_ready[r_in[i]]-sim_num_insn) == 1)
+					sim_num_RAW_hazard_q2 ++;
+				else if((reg_ready[r_in[i]]-sim_num_insn) == 0)
+					sim_num_RAW_hazard_q1 ++;
+				break;
+			}
+		}
+	}
+										
+	if(((MD_OP_FLAGS(op) & F_MEM)&&(MD_OP_FLAGS(op) & F_LOAD)) ||
+           ((MD_OP_FLAGS(op) & F_ICOMP))){
+		if(r_out[0] != DNA)
+			reg_ready[r_out[0]] = sim_num_insn + 2;
+		if(r_out[1] != DNA)
+			reg_ready[r_out[1]] = sim_num_insn + 2;
+	}
+
 /* ECE552 Assignment 1 - END CODE*/
 
       if (fault != md_fault_none)
