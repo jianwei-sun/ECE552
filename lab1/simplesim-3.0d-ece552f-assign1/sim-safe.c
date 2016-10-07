@@ -71,7 +71,6 @@ static counter_t sim_num_RAW_hazard_q1;
 static counter_t sim_num_RAW_hazard_q2;
 static counter_t reg_ready[MD_TOTAL_REGS];
 static counter_t reg_readyQ2[MD_TOTAL_REGS];
-static int load_flagQ2[MD_TOTAL_REGS];
 /* ECE552 Assignment 1 - STATS COUNTERS - END */
 
 /*
@@ -380,10 +379,13 @@ sim_main(void)
 	{
 		int i;
 		for(i=0;i<3;i++){
-			if(r_in[i] != DNA && reg_ready[r_in[i]] >= sim_num_insn){
-		/*		if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
+			if(r_in[i] != DNA && reg_ready[r_in[i]] > sim_num_insn){
+				/* Skip if branch because they are control hazards */
+				if((i==0) && (MD_OP_FLAGS(op) & F_CTRL) && (MD_OP_FLAGS(op) & F_DIRJMP)){
 					continue;}
-		*/		sim_num_RAW_hazard_q1 += (reg_ready[r_in[i]]-sim_num_insn) + 1;
+				int delay = (reg_ready[r_in[i]]-sim_num_insn);
+				/* Increment the number of clock cycle delays */
+				sim_num_RAW_hazard_q1 += delay;		
 				break;
 			}
 		}
@@ -392,11 +394,21 @@ sim_main(void)
 	{
 		int i;
 		for(i=0;i<3;i++){
-			if(r_in[i] != DNA && reg_readyQ2[r_in[i]] >= sim_num_insn){
-				if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
+			if(r_in[i] != DNA && reg_readyQ2[r_in[i]] > sim_num_insn){
+				/* Skip if branch because they are control hazards */
+				/* Skip if store because they are bypassed */
+				if(((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE))||((i==0) && (MD_OP_FLAGS(op) & F_CTRL) && (MD_OP_FLAGS(op) & F_DIRJMP))){
 					continue;}
-				sim_num_RAW_hazard_q2 += (reg_readyQ2[r_in[i]]-sim_num_insn) + 1;
-				reg_readyQ2[r_in[i]] -= 2;
+				int delay = (reg_readyQ2[r_in[i]]-sim_num_insn);
+				sim_num_RAW_hazard_q2 += delay;
+				int j;
+				/* Since the current instruction blocks for "delay" cycles, we subtract that quantity from all the reg ready values because you now wait a fewer number of cycles*/
+				for(j = 0; j < MD_TOTAL_REGS; j++){
+					if(reg_readyQ2[j] - delay < 0)
+						reg_readyQ2[j] = 0
+					else
+						reg_readyQ2[j] -= delay;
+				}
 				break;
 			}
 		}
@@ -404,25 +416,28 @@ sim_main(void)
 	/* Q1 */									
 	if(((MD_OP_FLAGS(op) & F_MEM)&&(MD_OP_FLAGS(op) & F_LOAD)) ||
            ((MD_OP_FLAGS(op) & F_ICOMP))){
+		/* Have to wait for 2 cycles because there are two stages between write back and decode*/
 		if(r_out[0] != DNA)
-			reg_ready[r_out[0]] = sim_num_insn + 2;
+			reg_ready[r_out[0]] = sim_num_insn + 3;
 		if(r_out[1] != DNA)
-			reg_ready[r_out[1]] = sim_num_insn + 2;
+			reg_ready[r_out[1]] = sim_num_insn + 3;
 	}
 	/* Q2 */
 	if((MD_OP_FLAGS(op) & F_ICOMP)){
+		/* Since there are two execute stages, we have to wait for a cycle */
 		if(r_out[0] != DNA)
-			reg_readyQ2[r_out[0]] = sim_num_insn + 1;
+			reg_readyQ2[r_out[0]] = sim_num_insn + 2;
 		if(r_out[1] != DNA)
-			reg_readyQ2[r_out[1]] = sim_num_insn + 1;
+			reg_readyQ2[r_out[1]] = sim_num_insn + 2;
 	}
 	if((MD_OP_FLAGS(op) & F_MEM)&&(MD_OP_FLAGS(op) & F_LOAD)){
+		/* Due to the two execute stages, we have to wait an additional cycle. Load produces a result in MEM, which is the next cycle after EX2 */
 		if(r_out[0] != DNA){
-			reg_readyQ2[r_out[0]] = sim_num_insn + 2;
+			reg_readyQ2[r_out[0]] = sim_num_insn + 3;
 			load_flagQ2[r_out[0]] = 1;
 		}
 		if(r_out[1] != DNA){
-			reg_readyQ2[r_out[1]] = sim_num_insn + 2;
+			reg_readyQ2[r_out[1]] = sim_num_insn + 3;
 			load_flagQ2[r_out[1]] = 1;
 		}
 	}

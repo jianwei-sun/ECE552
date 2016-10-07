@@ -11,7 +11,7 @@
 int main (int argc, char *argv[]){
 	/* Initialize all variables */ 
 	int loop_iterations = LOOP_ITERATIONS;
-	int loop_index = 0;
+	register int loop_index = 0;
 	
 	register int a = 0;
 	register int b = 0;	
@@ -25,14 +25,12 @@ int main (int argc, char *argv[]){
 	for(loop_index=0; loop_index<loop_iterations; loop_index++){
 	/* 		
 		This code checks for the loop termination condition
-		lw	$2,20($fp)
-		lw	$8,16($fp)
-		slt	$2,$2,$8		Q1 2 cycle stall, Q2 2 cycle stall
-		bne	$2,$0,$L5		
+		lw	$2,16($fp)
+		slt	$9,$3,$2		Q1 2 cycle stall, Q2 2 cycle stall
+		bne	$9,$0,$L5
 		j	$L3
 	*/
-
-	/*	a = *c;
+		a = *c;
 		b = a + 1;
  		a++;
 		/*
@@ -48,10 +46,10 @@ int main (int argc, char *argv[]){
 		/*
 			lw	$3,0($5)	
 			addu	$4,$4,1		
-			addu	$3,$3,1		Q1 1 cycle stalls
+			addu	$3,$3,1		Q1 1 cycle stalls, Q2 1 cycle stall
 		*/
 		SUFFICIENT_NOP
-		
+
 		d = 5;
 		b = 2*d;
 		a = d + 1;
@@ -98,14 +96,11 @@ int main (int argc, char *argv[]){
 			addu	$2,$8,1		Q1 2 cycle stall, Q2 2 cycle stall
 			move	$8,$2		Q1 2 cycle stall, Q2 1 cycle stall
 			sw	$8,28($fp)	Q1 2 cycle stall
-		*/*/
+		*/
 		SUFFICIENT_NOP
 	/*
 		This code increments loop_index and jumps to the beginning of the loop
-		lw	$8,20($fp)		
-		addu	$2,$8,1			Q1 2 cycle stall, Q2 2 cycle stall
-		move	$8,$2			Q1 2 cycle stall, Q2 1 cycle stall
-		sw	$8,20($fp)		Q1 2 cycle stall
+		addu	$3,$3,1
 		j	$L2
 	*/
 	}
