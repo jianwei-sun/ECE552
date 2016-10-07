@@ -70,6 +70,8 @@
 static counter_t sim_num_RAW_hazard_q1;
 static counter_t sim_num_RAW_hazard_q2;
 static counter_t reg_ready[MD_TOTAL_REGS];
+static counter_t reg_readyQ2[MD_TOTAL_REGS];
+static int load_flagQ2[MD_TOTAL_REGS];
 /* ECE552 Assignment 1 - STATS COUNTERS - END */
 
 /*
@@ -310,7 +312,6 @@ sim_main(void)
 {
 /* ECE552 Assignment 1 - BEGIN CODE*/
   int r_out[2], r_in[3];
- 
 /* ECE552 Assignment 1 - END CODE*/
   md_inst_t inst;
   register md_addr_t addr;
@@ -375,24 +376,55 @@ sim_main(void)
 	  panic("attempted to execute a bogus opcode");
       }
 /* ECE552 Assignment 1 - BEGIN CODE*/
+	/* Q1 */
 	{
 		int i;
 		for(i=0;i<3;i++){
 			if(r_in[i] != DNA && reg_ready[r_in[i]] >= sim_num_insn){
-				if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
+		/*		if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
 					continue;}
-				sim_num_RAW_hazard_q1 += (reg_ready[r_in[i]]-sim_num_insn) + 1;
+		*/		sim_num_RAW_hazard_q1 += (reg_ready[r_in[i]]-sim_num_insn) + 1;
 				break;
 			}
 		}
 	}
-										
+	/* Q2 */
+	{
+		int i;
+		for(i=0;i<3;i++){
+			if(r_in[i] != DNA && reg_readyQ2[r_in[i]] >= sim_num_insn){
+				if((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)){
+					continue;}
+				sim_num_RAW_hazard_q2 += (reg_readyQ2[r_in[i]]-sim_num_insn) + 1;
+				reg_readyQ2[r_in[i]] -= 2;
+				break;
+			}
+		}
+	}
+	/* Q1 */									
 	if(((MD_OP_FLAGS(op) & F_MEM)&&(MD_OP_FLAGS(op) & F_LOAD)) ||
            ((MD_OP_FLAGS(op) & F_ICOMP))){
 		if(r_out[0] != DNA)
 			reg_ready[r_out[0]] = sim_num_insn + 2;
 		if(r_out[1] != DNA)
 			reg_ready[r_out[1]] = sim_num_insn + 2;
+	}
+	/* Q2 */
+	if((MD_OP_FLAGS(op) & F_ICOMP)){
+		if(r_out[0] != DNA)
+			reg_readyQ2[r_out[0]] = sim_num_insn + 1;
+		if(r_out[1] != DNA)
+			reg_readyQ2[r_out[1]] = sim_num_insn + 1;
+	}
+	if((MD_OP_FLAGS(op) & F_MEM)&&(MD_OP_FLAGS(op) & F_LOAD)){
+		if(r_out[0] != DNA){
+			reg_readyQ2[r_out[0]] = sim_num_insn + 2;
+			load_flagQ2[r_out[0]] = 1;
+		}
+		if(r_out[1] != DNA){
+			reg_readyQ2[r_out[1]] = sim_num_insn + 2;
+			load_flagQ2[r_out[1]] = 1;
+		}
 	}
 
 /* ECE552 Assignment 1 - END CODE*/

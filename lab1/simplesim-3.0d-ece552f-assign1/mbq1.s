@@ -19,60 +19,90 @@ __gnu_compiled_c:
 	.loc	1 11
 	.ent	main
 main:
-	.frame	$fp,56,$31		# vars= 32, regs= 2/0, args= 16, extra= 0
+	.frame	$fp,40,$31		# vars= 16, regs= 2/0, args= 16, extra= 0
 	.mask	0xc0000000,-4
 	.fmask	0x00000000,0
-	subu	$sp,$sp,56
-	sw	$31,52($sp)
-	sw	$fp,48($sp)
+	subu	$sp,$sp,40
+	sw	$31,36($sp)
+	sw	$fp,32($sp)
 	move	$fp,$sp
-	sw	$4,56($fp)
-	sw	$5,60($fp)
+	sw	$4,40($fp)
+	sw	$5,44($fp)
 	jal	__main
 	li	$2,0x000f4240		# 1000000
 	sw	$2,16($fp)
 	sw	$0,20($fp)
+	move	$3,$0
+	move	$4,$0
+	move	$6,$0
 	sw	$0,24($fp)
 	sw	$0,28($fp)
-	sw	$0,32($fp)
-	sw	$0,36($fp)
-	sw	$0,40($fp)
-	sw	$0,44($fp)
+	move	$7,$0
 	sw	$0,20($fp)
 $L2:
 	lw	$2,20($fp)
-	lw	$3,16($fp)
-	slt	$2,$2,$3
+	lw	$8,16($fp)
+	slt	$2,$2,$8
 	bne	$2,$0,$L5
 	j	$L3
 $L5:
-	lw	$3,24($fp)
-	addu	$2,$3,1
-	move	$3,$2
-	sw	$3,24($fp)
-	lw	$2,24($fp)
-	move	$3,$2
-	sll	$2,$3,1
-	sw	$2,28($fp)
-	sw	$0,36($fp)
-	sw	$0,40($fp)
-	lw	$2,28($fp)
-	lw	$3,40($fp)
-	addu	$2,$2,$3
-	sw	$2,28($fp)
+	lw	$3,0($5)
+	addu	$4,$3,1
+	addu	$3,$3,1
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	lw	$3,0($5)
+	addu	$4,$4,1
+	addu	$3,$3,1
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$6,0x00000005		# 5
+	move	$2,$6
+	sll	$8,$2,1
+	move	$4,$8
+	addu	$3,$6,1
+	addu	$3,$3,1
+	subu	$6,$3,1
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	lw	$3,0($5)
+	addu	$4,$3,1
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	addu	$3,$3,1
+	addu	$4,$4,1
+	addu	$3,$3,1
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	lw	$8,24($fp)
+	addu	$2,$8,1
+	move	$8,$2
+	sw	$8,24($fp)
+	lw	$8,28($fp)
+	addu	$2,$8,1
+	move	$8,$2
+	sw	$8,28($fp)
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
+	li	$7,0x00000032		# 50
 $L4:
-	lw	$3,20($fp)
-	addu	$2,$3,1
-	move	$3,$2
-	sw	$3,20($fp)
+	lw	$8,20($fp)
+	addu	$2,$8,1
+	move	$8,$2
+	sw	$8,20($fp)
 	j	$L2
 $L3:
 	move	$2,$0
 	j	$L1
 $L1:
 	move	$sp,$fp			# sp not trusted here
-	lw	$31,52($sp)
-	lw	$fp,48($sp)
-	addu	$sp,$sp,56
+	lw	$31,36($sp)
+	lw	$fp,32($sp)
+	addu	$sp,$sp,40
 	j	$31
 	.end	main
