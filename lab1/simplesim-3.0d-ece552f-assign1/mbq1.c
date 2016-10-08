@@ -36,7 +36,7 @@ int main (int argc, char *argv[]){
 		/*
 			lw	$3,0($5)
 			addu	$4,$3,1		Q1 2 cycle stall, Q2 2 cycle stall
-			addu	$3,$3,1		Q1 1 cycle stall
+			addu	$3,$3,1		No stall 
 		*/
 		SUFFICIENT_NOP
 
@@ -45,7 +45,7 @@ int main (int argc, char *argv[]){
 		a++;
 		/*
 			lw	$3,0($5)	
-			addu	$4,$4,1		
+			addu	$4,$4,1		Instruction without dependency
 			addu	$3,$3,1		Q1 1 cycle stalls, Q2 1 cycle stall
 		*/
 		SUFFICIENT_NOP

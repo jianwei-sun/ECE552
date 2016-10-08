@@ -68,7 +68,11 @@
 
 /* ECE552 Assignment 1 - STATS COUNTERS - BEGIN */
 static counter_t sim_num_RAW_hazard_q1;
+static counter_t num_1cycle_q1;
+static counter_t num_2cycle_q1;
 static counter_t sim_num_RAW_hazard_q2;
+static counter_t num_1cycle_q2;
+static counter_t num_2cycle_q2;
 static counter_t reg_ready[MD_TOTAL_REGS];
 static counter_t reg_readyQ2[MD_TOTAL_REGS];
 /* ECE552 Assignment 1 - STATS COUNTERS - END */
@@ -141,17 +145,33 @@ sim_reg_stats(struct stat_sdb_t *sdb)
 		   "total number of RAW hazards (q1)",
 		   &sim_num_RAW_hazard_q1, sim_num_RAW_hazard_q1, NULL);
 
+  stat_reg_counter(sdb, "num_1cycle_q1",
+		   "total number of one cycle stalls (q1)",
+		  &num_1cycle_q1, num_1cycle_q1, NULL);
+  
+  stat_reg_counter(sdb, "num_2cycle_q1",
+		   "total number of two cycle stalls (q1)",
+		  &num_2cycle_q1, num_2cycle_q1, NULL);
+
   stat_reg_counter(sdb, "sim_num_RAW_hazard_q2",
 		   "total number of RAW hazards (q2)",
 		   &sim_num_RAW_hazard_q2, sim_num_RAW_hazard_q2, NULL);
 
+  stat_reg_counter(sdb, "num_1cycle_q2",
+		   "total number of one cycle stalls (q2)",
+		  &num_1cycle_q2, num_1cycle_q2, NULL);
+  
+  stat_reg_counter(sdb, "num_2cycle_q2",
+		   "total number of two cycle stalls (q2)",
+		  &num_2cycle_q2, num_2cycle_q2, NULL);
+
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q1",
 		   "CPI from RAW hazard (q1)",
-		   "(sim_num_insn + sim_num_RAW_hazard_q1) / sim_num_insn", NULL);
+		   "(sim_num_insn + num_1cycle_q1 + 2*num_2cycle_q1) / sim_num_insn", NULL);
 
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q2",
 		   "CPI from RAW hazard (q2)",
-		   "(sim_num_insn + sim_num_RAW_hazard_q2) / sim_num_insn", NULL);
+		   "(sim_num_insn + num_1cycle_q2 + 2*num_2cycle_q2) / sim_num_insn", NULL);
 
   /* ECE552 Assignment 1 - END CODE */
 
@@ -385,7 +405,19 @@ sim_main(void)
 					continue;}
 				int delay = (reg_ready[r_in[i]]-sim_num_insn);
 				/* Increment the number of clock cycle delays */
-				sim_num_RAW_hazard_q1 += delay;		
+				sim_num_RAW_hazard_q1 ++;		
+				if(delay == 1)
+					num_1cycle_q1 ++;
+				else if(delay == 2)
+					num_2cycle_q1 ++;
+				int j;
+				/* Since the current instruction blocks for "delay" cycles, we subtract that quantity from all the reg ready values because you now wait a fewer number of cycles*/
+				for(j = 0; j < MD_TOTAL_REGS; j++){
+					if(reg_ready[j] - delay < 0)
+						reg_ready[j] = 0;
+					else
+						reg_ready[j] -= delay;
+				}
 				break;
 			}
 		}
@@ -400,12 +432,16 @@ sim_main(void)
 				if(((i==0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE))||((i==0) && (MD_OP_FLAGS(op) & F_CTRL) && (MD_OP_FLAGS(op) & F_DIRJMP))){
 					continue;}
 				int delay = (reg_readyQ2[r_in[i]]-sim_num_insn);
-				sim_num_RAW_hazard_q2 += delay;
+				sim_num_RAW_hazard_q2 ++;
+				if(delay == 1)
+					num_1cycle_q2 ++;
+				else if(delay == 2)
+					num_2cycle_q2 ++;
 				int j;
 				/* Since the current instruction blocks for "delay" cycles, we subtract that quantity from all the reg ready values because you now wait a fewer number of cycles*/
 				for(j = 0; j < MD_TOTAL_REGS; j++){
 					if(reg_readyQ2[j] - delay < 0)
-						reg_readyQ2[j] = 0
+						reg_readyQ2[j] = 0;
 					else
 						reg_readyQ2[j] -= delay;
 				}
@@ -434,11 +470,9 @@ sim_main(void)
 		/* Due to the two execute stages, we have to wait an additional cycle. Load produces a result in MEM, which is the next cycle after EX2 */
 		if(r_out[0] != DNA){
 			reg_readyQ2[r_out[0]] = sim_num_insn + 3;
-			load_flagQ2[r_out[0]] = 1;
 		}
 		if(r_out[1] != DNA){
 			reg_readyQ2[r_out[1]] = sim_num_insn + 3;
-			load_flagQ2[r_out[1]] = 1;
 		}
 	}
 
