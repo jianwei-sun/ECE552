@@ -41,7 +41,7 @@ int main (int argc, char *argv[]){
 		/*
 			lw	$3,0($5)
 			addiu	$4,$3,1		Q1 2 cycle stall, Q2 2 cycle stall
-			addiu	$3,$3,1		No stall 
+			addiu	$3,$3,1		No stall because previous instruction stalled for 2 cycles 
 		*/
 		SUFFICIENT_NOP
 
@@ -85,7 +85,7 @@ int main (int argc, char *argv[]){
 		a ++;
 		/*
 			addiu	$3,$3,1		
-			addiu	$4,$4,1		
+			addiu	$4,$4,1		Instruction without dependency
 			addiu	$3,$3,1		Q1 1 cycle stall
 		*/
 		SUFFICIENT_NOP
@@ -155,7 +155,7 @@ int main (int argc, char *argv[]){
 		Q2
 			CPI = (49 + 8 + 2*5) / 49 = 1.3673
 
-		These values agree with the simulation data, as expected.
+		These values agree with the simulation data shown above, as expected.
 	*/
 
 
