@@ -6,10 +6,11 @@
 
 #include "predictor.h"
 
+#define TWO_BIT_SAT_TABLE_SIZE 8192
 /////////////////////////////////////////////////////////////
 // 2bitsat
 /////////////////////////////////////////////////////////////
-int state_2bitsat;
+unsigned char *state_table_2bitsat;
 
 void InitPredictor_2bitsat() {
   /* 
@@ -18,18 +19,25 @@ void InitPredictor_2bitsat() {
 	2 - Weak taken
 	3 - Strong taken
   */
-  state_2bitsat = 1; //Weak not-taken as the intial state
+  state_table_2bitsat = (unsigned char*)malloc(TWO_BIT_SAT_TABLE_SIZE/8*sizeof(unsigned char));
+  int i = TWO_BIT_SAT_TABLE_SIZE/8;
+  while(--i >= 0){
+	*(state_table_2bitsat + i) = 1;
+  }
 }
 
 bool GetPrediction_2bitsat(UINT32 PC) {
-  return state_2bitsat <= 1 ? NOT_TAKEN : TAKEN;
+  int state = *(state_table_2bitsat + (int)(PC & (UINT32)0x3FF));
+  return state <= 1 ? NOT_TAKEN : TAKEN;
 }
 
 void UpdatePredictor_2bitsat(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
+  int current_state = *(state_table_2bitsat + (int)(PC & (UINT32)0x3FF));
   if(resolveDir == TAKEN)
-	state_2bitsat = ((state_2bitsat + 1) > 3 ? 3 : (state_2bitsat + 1));
+	current_state = ((current_state + 1) > 3 ? 3 : (current_state + 1));
   else 
-	state_2bitsat = ((state_2bitsat - 1) < 0 ? 0 : (state_2bitsat - 1));
+	current_state = ((current_state - 1) < 0 ? 0 : (current_state - 1));
+  *(state_table_2bitsat + (int)(PC & (UINT32)0x3FF)) = current_state;
 }
 
 /////////////////////////////////////////////////////////////
