@@ -63,7 +63,7 @@ bool GetPrediction_2level(UINT32 PC) {
   unsigned char* PHT_table;
   PHT_index = (int)(PC & (UINT32)0x7);
   BHT_index = (int)((PC & (UINT32)0xFF8) >> 3);
-  BHR = *(bht_2level + BHT_index);
+  BHR = *(bht_2level + BHT_index) & 0x3F;
   PHT_table = *(pht_pointers + PHT_index);
   state = *(PHT_table + BHR);
   return state <= 1 ? NOT_TAKEN : TAKEN;
@@ -74,14 +74,20 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
   unsigned char* PHT_table;
   PHT_index = (int)(PC & (UINT32)0x7);
   BHT_index = (int)((PC & (UINT32)0xFF8) >> 3);
-  BHR = *(bht_2level + BHT_index);
+  BHR = *(bht_2level + BHT_index) & 0x3F;
   PHT_table = *(pht_pointers + PHT_index);
   state = *(PHT_table + BHR);
-  if(resolveDir == TAKEN)
+  if(resolveDir == TAKEN){
 	state = ((state + 1) > 3 ? 3 : (state + 1));
-  else 
+	BHR = (BHR << 1) | 0x01;
+  }
+  else{
 	state = ((state - 1) < 0 ? 0 : (state - 1));
+        BHR = (BHR << 1);
+  }  
+  BHR = BHR & 0x3F;
   *(PHT_table + BHR) = state;
+  *(bht_2level + BHT_index) = BHR;
 }
 
 /////////////////////////////////////////////////////////////
