@@ -49,10 +49,10 @@ void InitPredictor_2level() {
   bht_2level = (unsigned char*)malloc(512*sizeof(unsigned char));
   pht_pointers = (unsigned char**)malloc(64*sizeof(unsigned char*));
   int i, j;
-  for(i = 0; i < 64; i++){
+  for(i = 0; i < 8; i++){
     *(pht_pointers + i) = (unsigned char*)malloc(8*sizeof(unsigned char));
     unsigned char* single_PHT_table = *(pht_pointers + i);
-    for(j = 0; j < 8; j++){
+    for(j = 0; j < 64; j++){
       *(single_PHT_table + i ) = 1;
     }
   }
@@ -64,8 +64,8 @@ bool GetPrediction_2level(UINT32 PC) {
   PHT_index = (int)(PC & (UINT32)0x7);
   BHT_index = (int)((PC & (UINT32)0xFF8) >> 3);
   BHR = *(bht_2level + BHT_index) & 0x3F;
-  PHT_table = *(pht_pointers + BHR);
-  state = *(PHT_table + PHT_index);
+  PHT_table = *(pht_pointers + PHT_index);
+  state = *(PHT_table + BHR);
   return state <= 1 ? NOT_TAKEN : TAKEN;
 }
 
@@ -75,8 +75,8 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
   PHT_index = (int)(PC & (UINT32)0x7);
   BHT_index = (int)((PC & (UINT32)0xFF8) >> 3);
   BHR = *(bht_2level + BHT_index) & 0x3F;
-  PHT_table = *(pht_pointers + BHR);
-  state = *(PHT_table + PHT_index);
+  PHT_table = *(pht_pointers + PHT_index);
+  state = *(PHT_table + BHR);
   if(resolveDir == TAKEN){
 	state = ((state + 1) > 3 ? 3 : (state + 1));
 	BHR = (BHR << 1) | 0x01;
