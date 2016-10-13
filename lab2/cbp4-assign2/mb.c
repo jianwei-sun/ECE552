@@ -1,11 +1,6 @@
 /* Jianwei Sun 1000009821, Yi Fan Zhang 1000029284
    Microbench mark program for Assignment 1, ECE552H1F
 
-   Compile using:
-   	/cad2/ece552f/compiler/bin/ssbig-na-sstrix-gcc mbq1.c -O0 -o mbq1  
-
-   Get assembly from:
-	/cad2/ece552f/compiler/bin/ssbig-na-sstrix-objdump -x -d -l mbq1 > mbq1.objdump
 */
 
 #include <stdio.h>
