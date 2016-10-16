@@ -164,16 +164,21 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 #define NUMBER_T_BLOCKS 4
 #define INIT_BIMODAL_STATE 1
 #define INIT_USABILITY_LEVEL 0
+#define HISTORY_LENGTH 20
 
 typedef struct TBlocks{
   unsigned char bimodal;
   unsigned char empty; 
-  unsigned short tag; 
+  unsigned int tag; 
   unsigned char u;
 } TBlock;
 
+unsigned int hash_1(UINT32, unsigned char*, unsigned int);
+
 unsigned char FirstBlock;
 TBlock **all_Tblocks;
+unsigned char BHR[HISTORY_LENGTH] = {0};
+unsigned int history_depths[NUMBER_T_BLOCKS] = {3,5,12,HISTORY_LENGTH};
 
 void InitPredictor_openend() {
   FirstBlock = INIT_BIMODAL_STATE;
@@ -189,7 +194,11 @@ void InitPredictor_openend() {
 }
 
 bool GetPrediction_openend(UINT32 PC) {
-
+  unsigned int hash_results[NUMBER_T_BLOCKS] = {0};
+  int i;
+  for(i = 0; i < NUMBER_T_BLOCKS; i++){
+    hash_results[i] = hash_1(PC, BHR, history_depths[i]);
+  } 
   return TAKEN;
 }
 
