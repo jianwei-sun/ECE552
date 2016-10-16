@@ -161,9 +161,31 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 /////////////////////////////////////////////////////////////
 // openend
 /////////////////////////////////////////////////////////////
+#define NUMBER_T_BLOCKS 4
+#define INIT_BIMODAL_STATE 1
+#define INIT_USABILITY_LEVEL 0
+
+typedef struct TBlocks{
+  unsigned char bimodal;
+  unsigned char empty; 
+  unsigned short tag; 
+  unsigned char u;
+} TBlock;
+
+unsigned char FirstBlock;
+TBlock **all_Tblocks;
 
 void InitPredictor_openend() {
+  FirstBlock = INIT_BIMODAL_STATE;
 
+  all_Tblocks = (TBlock**)malloc(NUMBER_T_BLOCKS*sizeof(*TBlock));
+  int i;
+  for(i = 0; i < NUMBER_T_BLOCKS; i++){
+    *(all_Tblocks + i) = (TBlock*)calloc(sizeof(TBlock));
+    *(all_Tblocks + i) -> empty = (unsigned char)1;
+    *(all_Tblocks + i) -> bimodal = (unsigned char)INIT_BIMODAL_STATE;
+    *(all_Tblocks + i) -> u = (unsigned char)INIT_USABILITY_LEVEL;
+  }
 }
 
 bool GetPrediction_openend(UINT32 PC) {
@@ -174,4 +196,5 @@ bool GetPrediction_openend(UINT32 PC) {
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
 
 }
+
 
