@@ -162,18 +162,20 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 // openend
 /////////////////////////////////////////////////////////////
 #define NUMBER_T_BLOCKS 4
+#define TBLOCK_SIZE 25
 #define INIT_BIMODAL_STATE 1
 #define INIT_USABILITY_LEVEL 0
 #define HISTORY_LENGTH 20
 
 typedef struct TBlocks{
-  unsigned char bimodal;
-  unsigned char empty; 
-  unsigned int tag; 
-  unsigned char u;
+  unsigned char bimodal[TBLOCK_SIZE];
+  unsigned char empty[TBLOCK_SIZE]; 
+  unsigned int tag[TBLOCK_SIZE]; 
+  unsigned char u[TBLOCK_SIZE];
 } TBlock;
 
 unsigned int hash_1(UINT32, unsigned char*, unsigned int);
+int entry_exists(TBlock*, unsigned int);
 
 unsigned char FirstBlock;
 TBlock **all_Tblocks;
@@ -183,27 +185,56 @@ unsigned int history_depths[NUMBER_T_BLOCKS] = {3,5,12,HISTORY_LENGTH};
 void InitPredictor_openend() {
   FirstBlock = INIT_BIMODAL_STATE;
 
-  all_Tblocks = (TBlock**)malloc(NUMBER_T_BLOCKS*sizeof(*TBlock));
-  int i;
+  all_Tblocks = (TBlock**)malloc(NUMBER_T_BLOCKS*sizeof(TBlock*));
+  int i, j;
   for(i = 0; i < NUMBER_T_BLOCKS; i++){
-    *(all_Tblocks + i) = (TBlock*)calloc(sizeof(TBlock));
-    *(all_Tblocks + i) -> empty = (unsigned char)1;
-    *(all_Tblocks + i) -> bimodal = (unsigned char)INIT_BIMODAL_STATE;
-    *(all_Tblocks + i) -> u = (unsigned char)INIT_USABILITY_LEVEL;
+      *(all_Tblocks + i) = (TBlock*)calloc(1,sizeof(TBlock));
+      for(j = 0; j < TBLOCK_SIZE; j++){
+        ((*(all_Tblocks + i)) -> empty)[j] = (unsigned char)1;
+        ((*(all_Tblocks + i)) -> bimodal)[j] = (unsigned char)INIT_BIMODAL_STATE;
+        ((*(all_Tblocks + i)) -> u)[j] = (unsigned char)INIT_USABILITY_LEVEL;
+      }
   }
 }
 
 bool GetPrediction_openend(UINT32 PC) {
+  //Probably makes more sense to make this function recursive
   unsigned int hash_results[NUMBER_T_BLOCKS] = {0};
+  unsigned char pred_results[NUMBER_T_BLOCKS] = {0};
+  unsigned char mux_results[NUMBER_T_BLOCKS] = {0};
   int i;
   for(i = 0; i < NUMBER_T_BLOCKS; i++){
+    int entry_index;
     hash_results[i] = hash_1(PC, BHR, history_depths[i]);
+    entry_index = entry_exists(*(all_Tblocks+i), hash_results[i]);
+    if(entry_index == -1){
+      mux_results[i] = 0;
+    } else{
+      //Perform a check on the u bit to see if results are valid
+      pred_results[i] = ((*(all_Tblocks + i)) -> bimodal)[entry_index];
+      mux_results[i] = 1;
+    }
+  }
+  unsigned char outcome = FirstBlock;
+  for(i = NUMBER_T_BLOCKS - 1; i >=0; i--){
+    if(mux_results[i] == 1){
+      outcome = pred_results[i];
+      break;
+    }
   } 
-  return TAKEN;
+  return outcome <= 1 ? NOT_TAKEN : TAKEN;
 }
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
 
 }
 
-
+int entry_exists(TBlock* tblock, unsigned int hash){
+  int i;
+  for(i = 0; i < TBLOCK_SIZE; i++){
+    if((tblock->tag[i] == hash) && (tblock->empty[i] != 0)){
+      return i;
+    }
+  }
+  return -1;
+}
