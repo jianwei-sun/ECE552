@@ -163,7 +163,7 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 /////////////////////////////////////////////////////////////
 #define NUMBER_T_BLOCKS 4
 #define TBLOCK_SIZE 25
-#define INIT_BIMODAL_STATE 1
+#define INIT_BIMODAL_STATE 3
 #define INIT_USABILITY_LEVEL 0
 #define HISTORY_LENGTH 20
 
@@ -182,6 +182,10 @@ TBlock **all_Tblocks;
 unsigned char BHR[HISTORY_LENGTH] = {0};
 unsigned int history_depths[NUMBER_T_BLOCKS] = {3,5,12,HISTORY_LENGTH};
 
+unsigned int hash_results[NUMBER_T_BLOCKS] = {0};
+unsigned char pred_results[NUMBER_T_BLOCKS] = {0};
+unsigned char mux_results[NUMBER_T_BLOCKS] = {0};
+
 void InitPredictor_openend() {
   FirstBlock = INIT_BIMODAL_STATE;
 
@@ -199,9 +203,6 @@ void InitPredictor_openend() {
 
 bool GetPrediction_openend(UINT32 PC) {
   //Probably makes more sense to make this function recursive
-  unsigned int hash_results[NUMBER_T_BLOCKS] = {0};
-  unsigned char pred_results[NUMBER_T_BLOCKS] = {0};
-  unsigned char mux_results[NUMBER_T_BLOCKS] = {0};
   int i;
   for(i = 0; i < NUMBER_T_BLOCKS; i++){
     int entry_index;
@@ -222,17 +223,66 @@ bool GetPrediction_openend(UINT32 PC) {
       break;
     }
   } 
-  return outcome <= 1 ? NOT_TAKEN : TAKEN;
+  return outcome <= 3 ? NOT_TAKEN : TAKEN;
 }
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-
+  //Find which TBlocks matched, and add the hash to everything that did not match
+  int i = 0, j;
+  TBlock *tblock;
+  bool base_outcome = FirstBlock <= 3 ? NOT_TAKEN : TAKEN;
+  for(i = 0; i < NUMBER_T_BLOCKS; i++){
+    if(mux_results[i] == 0){
+      //Means that the T_Block does not contain the entry. So we add it
+      tblock = *(all_Tblocks + i);
+      for(j = 0; j < TBLOCK_SIZE; j++){
+        if(tblock->empty[j] == 1){
+	  tblock->empty[j] = 0;
+          tblock->tag[j] = hash_results[i];
+          tblock->bimodal[j] = (unsigned char)INIT_BIMODAL_STATE;
+	  tblock->u[j] = (unsigned char)1;
+	  break;
+        }
+      }
+    }
+  }
+  for(i = NUMBER_T_BLOCKS - 1; i >= 0; i--){
+    if(mux_results[i] == 1){
+      tblock = *(all_Tblocks + i);
+      for(j = 0; j < TBLOCK_SIZE; j++){
+        if(tblock->tag[j] == hash_results[i]){
+          //Update the bimodal predictor
+          if(resolveDir == TAKEN){
+            tblock->bimodal[j] = (tblock->bimodal[j] + 1) > 7 ? 7 : (tblock->bimodal[j] + 1);
+	  } else {
+            tblock->bimodal[j] = (tblock->bimodal[j] - 1) > 10 ? 0 : (tblock->bimodal[j] - 1);
+          }
+	  //update the usability bit here
+          if(resolveDir == predDir && base_outcome != resolveDir){
+            tblock->u[j] = (tblock->u[j] + 1) > 3 ? 3 : (tblock->u[j] + 1);
+          }
+          if(resolveDir != predDir && base_outcome == resolveDir){
+            tblock->u[j] = (tblock->u[j] - 1) > 10 ? 0 : (tblock->u[j] - 1);
+          }
+          break;
+        }
+      }
+      break;
+    }
+  }
+  
+  if(resolveDir == TAKEN)
+	FirstBlock = ((FirstBlock + 1) > 3 ? 3 : (FirstBlock + 1));
+  else 
+	FirstBlock = ((FirstBlock - 1) > 10 ? 0 : (FirstBlock - 1));
+  return;
+     
 }
 
 int entry_exists(TBlock* tblock, unsigned int hash){
   int i;
   for(i = 0; i < TBLOCK_SIZE; i++){
-    if((tblock->tag[i] == hash) && (tblock->empty[i] != 0)){
+    if((tblock->tag[i] == hash) && (tblock->empty[i] != 1)){
       return i;
     }
   }
