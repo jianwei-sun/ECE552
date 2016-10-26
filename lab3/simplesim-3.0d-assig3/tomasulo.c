@@ -176,6 +176,7 @@ void issue_To_execute(int current_cycle) {
   /* ECE552: YOUR CODE GOES HERE */
 }
 
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Moves instruction(s) from the dispatch stage to the issue stage
@@ -184,7 +185,6 @@ void issue_To_execute(int current_cycle) {
  * Returns:
  * 	None
  */
-/* ECE552 Assignment 3 - BEGIN CODE */
 void dispatch_To_issue(int current_cycle) {
 	instruction_t* dispatched_insn;
 		
@@ -197,6 +197,8 @@ void dispatch_To_issue(int current_cycle) {
 	}
 }
 /* ECE552 Assignment 3 - END CODE */
+
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Grabs an instruction from the instruction trace (if possible)
@@ -205,16 +207,22 @@ void dispatch_To_issue(int current_cycle) {
  * Returns:
  * 	None
  */
-/* ECE552 Assignment 3 - BEGIN CODE */
 void fetch(instruction_trace_t* trace) {
+	instruction_t* fetched_insn;
+	//Make sure we fetch until we get a non-trap instruction, as required
+	do{
+		fetched_insn = get_instr(trace, ++fetch_index);
+	} while(IS_TRAP(fetched_insn));
 	//Pre-increment the fetch index because it is the index of the last 
 	//fetched instruction, and add it to the IFQ
-	instr_queue[ifq_push_index] = get_instr(trace, ++fetch_index);
+	instr_queue[ifq_push_index] = fetched_insn;
 	ifq_push_index = (ifq_push_index + 1) % (INSTR_QUEUE_SIZE + 1);
 	instr_queue_size++;
   	return;
 }
 /* ECE552 Assignment 3 - END CODE */
+
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Calls fetch and dispatches an instruction at the same cycle (if possible)
@@ -224,7 +232,7 @@ void fetch(instruction_trace_t* trace) {
  * Returns:
  * 	None
  */
-/* ECE552 Assignment 3 - BEGIN CODE */
+
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 	//First check if there is room in the IFQ
 	if(((ifq_push_index+1)%(INSTR_QUEUE_SIZE + 1))!=ifq_pop_index){
@@ -232,6 +240,8 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 	}
 }
 /* ECE552 Assignment 3 - END CODE */
+
+
 /* 
  * Description: 
  * 	Performs a cycle-by-cycle simulation of the 4-stage pipeline
