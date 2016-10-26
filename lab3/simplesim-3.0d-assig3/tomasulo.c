@@ -74,11 +74,22 @@
   myfprintf(out, "reg#%d %s ", reg, str);	\
   md_print_insn(instr->inst, instr->pc, out); \
   myfprintf(stdout, "(%d)\n",instr->index);
+/* ECE552 Assignment 3 - BEGIN CODE */
+/* FUNCTIONAL DECLARATIONS */
+
 
 /* VARIABLES */
-
 //instruction queue for tomasulo
-static instruction_t* instr_queue[INSTR_QUEUE_SIZE];
+//We implement a circular buffer for convenience. We need an extra space in the 
+//implementation to determine if the buffer is full
+static instruction_t* instr_queue[INSTR_QUEUE_SIZE + 1];
+//push index == pop index means queue is empty
+//push index 1 before pop index means queue is full
+int ifq_push_index = 0;
+int ifq_pop_index = 0;
+/* ECE552 Assignment 3 - END CODE */
+
+
 //number of instructions in the instruction queue
 static int instr_queue_size = 0;
 
@@ -173,11 +184,19 @@ void issue_To_execute(int current_cycle) {
  * Returns:
  * 	None
  */
+/* ECE552 Assignment 3 - BEGIN CODE */
 void dispatch_To_issue(int current_cycle) {
+	instruction_t* dispatched_insn;
+		
 
-  /* ECE552: YOUR CODE GOES HERE */
+	//If not empty, then proceed with pop
+	if(ifq_pop_index != ifq_push_index){
+		dispatched_insn = instr_queue[ifq_pop_index];
+		ifq_pop_index = (ifq_pop_index + 1) % (INSTR_QUEUE_SIZE + 1);
+		instr_queue_size--;
+	}
 }
-
+/* ECE552 Assignment 3 - END CODE */
 /* 
  * Description: 
  * 	Grabs an instruction from the instruction trace (if possible)
@@ -186,11 +205,16 @@ void dispatch_To_issue(int current_cycle) {
  * Returns:
  * 	None
  */
+/* ECE552 Assignment 3 - BEGIN CODE */
 void fetch(instruction_trace_t* trace) {
-
-  /* ECE552: YOUR CODE GOES HERE */
+	//Pre-increment the fetch index because it is the index of the last 
+	//fetched instruction, and add it to the IFQ
+	instr_queue[ifq_push_index] = get_instr(trace, ++fetch_index);
+	ifq_push_index = (ifq_push_index + 1) % (INSTR_QUEUE_SIZE + 1);
+	instr_queue_size++;
+  	return;
 }
-
+/* ECE552 Assignment 3 - END CODE */
 /* 
  * Description: 
  * 	Calls fetch and dispatches an instruction at the same cycle (if possible)
@@ -200,13 +224,14 @@ void fetch(instruction_trace_t* trace) {
  * Returns:
  * 	None
  */
+/* ECE552 Assignment 3 - BEGIN CODE */
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
-
-  fetch(trace);
-
-  /* ECE552: YOUR CODE GOES HERE */
+	//First check if there is room in the IFQ
+	if(((ifq_push_index+1)%(INSTR_QUEUE_SIZE + 1))!=ifq_pop_index){
+		fetch(trace);
+	}
 }
-
+/* ECE552 Assignment 3 - END CODE */
 /* 
  * Description: 
  * 	Performs a cycle-by-cycle simulation of the 4-stage pipeline
