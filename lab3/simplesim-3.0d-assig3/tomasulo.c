@@ -187,7 +187,8 @@ void issue_To_execute(int current_cycle) {
  */
 void dispatch_To_issue(int current_cycle) {
 	instruction_t* dispatched_insn;
-		
+	//Check what type of instruction to figure out what RS is needed
+	//Then see if that station is busy so we move it over
 
 	//If not empty, then proceed with pop
 	if(ifq_pop_index != ifq_push_index){
