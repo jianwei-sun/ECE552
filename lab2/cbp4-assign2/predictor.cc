@@ -206,6 +206,7 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 #define INIT_BIMODAL_STATE 3 //Weak not taken for a 3 bit counter
 #define INIT_USABILITY_LEVEL 0  //No usefulness for a 2 bit counter
 #define GHR_LENGTH 512
+#define TAG_SIZE 11
 
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -214,9 +215,9 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 
 //Data structures
 typedef struct TBlocks{
-  int bimodal[TBLOCK_SIZE];
-  UINT32 tag[TBLOCK_SIZE]; 
-  int u[TBLOCK_SIZE];
+  int *bimodal;
+  UINT32 *tag; 
+  int *u;
 } TBlock;
 
 
@@ -224,7 +225,7 @@ typedef struct TBlocks{
 int update_bimodal_counter(int, bool);
 void increment_u(TBlock*, int);
 void decrement_u(TBlock*, int);
-void allocate_row(TBlock*, int, bool, int, int);
+void allocate_row(TBlock*, int, bool, UINT32, int);
 void update_bimodal(TBlock*, int, bool);
 bool get_prediction(int);
 void update_GHR(bool);
@@ -242,6 +243,7 @@ int predict_block_was_last;
 UINT32 hash1_results[NUMBER_T_BLOCKS];
 UINT32 hash2_results[NUMBER_T_BLOCKS];
 int hash_lengths[NUMBER_T_BLOCKS] = {0,5,10,18,32,64,84,150,512};
+int TSIZES[NUMBER_T_BLOCKS] = {512,512,1024,1024,1024,1024,1024,1024,1024};
 int counter = 0; 
 
 //Debugging
@@ -256,10 +258,14 @@ void InitPredictor_openend() {
 	all_Tblocks = (TBlock**)malloc(NUMBER_T_BLOCKS*sizeof(TBlock*));
 	for(i = 0; i < NUMBER_T_BLOCKS; i++){
 		*(all_Tblocks + i) = (TBlock*)calloc(1,sizeof(TBlock));
-		for(j = 0; j < TBLOCK_SIZE; j++){
+		(*(all_Tblocks + i)) -> bimodal = (int*)malloc(TSIZES[i]*sizeof(int));
+		(*(all_Tblocks + i)) -> tag = (UINT32*)malloc(TSIZES[i]*sizeof(UINT32));
+		(*(all_Tblocks + i)) -> u = (int*)malloc(TSIZES[i]*sizeof(int));
+
+		for(j = 0; j < TSIZES[i]; j++){
 			((*(all_Tblocks + i)) -> bimodal)[j] = (int)INIT_BIMODAL_STATE;
 			((*(all_Tblocks + i)) -> u)[j] = (int)INIT_USABILITY_LEVEL;
-			((*(all_Tblocks + i)) -> tag)[j] = 0;
+			((*(all_Tblocks + i)) -> tag)[j] = (UINT32)0;
 		}
 	}
 	return;
@@ -276,13 +282,14 @@ bool GetPrediction_openend(UINT32 PC) {
 	predict_block_index = 0;
 	predict_block_was_last = 0;
 	for(i = NUMBER_T_BLOCKS-1; i > 0; i--){
-		//hash1_results[i] = (hash1(PC, hash_lengths[i])%TBLOCK_SIZE);
-		hash1_results[i] = (hash1(PC, hash_lengths[i]));
-		hash2_results[i] = hash2(PC, hash_lengths[i]);		
+		hash1_results[i] = hash1(PC, hash_lengths[i]);
+		hash1_results[i] = (hash1_results[i])%(TSIZES[i]);
+		//hash1_results[i] = (hash1(PC, hash_lengths[i]));
+		hash2_results[i] = hash2(PC, hash_lengths[i])%(0x00000001<<TAG_SIZE);		
 		//hash1_results[i] = PC%TBLOCK_SIZE;
 		//hash2_results[i] = PC;
 		block = all_Tblocks[i];
-		if(((block->tag)[hash1_results[i]]) == hash2_results[i]){  //Get the prediction if tags match			
+		if(((block->tag)[hash1_results[i]%(TSIZES[i])]) == hash2_results[i]){  //Get the prediction if tags match			
 			T_gave_prediction= T_gave_prediction+1;
 			prediction = get_prediction((block->bimodal)[hash1_results[i]]);
 			predict_block = block;
@@ -314,6 +321,7 @@ void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 br
 	//Update bimodal
 	if(predict_block_index == 0){
 		update_bimodal(predict_block,(PC&FIRST_BLOCK_PC_MASK)>>2,resolveDir);
+		//(predict_block->tag)[(PC&FIRST_BLOCK_PC_MASK)>>2] = 1;
 	} else {
 		update_bimodal(predict_block,hash1_results[predict_block_index],resolveDir);
 	}
@@ -346,7 +354,16 @@ void usage_stats(void){
 	printf("PRINTING USAGE STATS:\n");
 	int i,j,num_use[NUMBER_T_BLOCKS] = {0};
 	TBlock* block;
-	for(i = 0; i < NUMBER_T_BLOCKS; i++){
+
+	block = all_Tblocks[0];
+	for(j=0;j<TBLOCK_SIZE;j++){
+		if((block->tag)[j] != 0){
+			num_use[0]++;
+			//printf("Block%d Entry%d u value%d\n",i,j,(block->u)[j]);
+		}
+	}
+	
+	for(i = 1; i < NUMBER_T_BLOCKS; i++){
 		block = all_Tblocks[i];
 		for(j=0;j<TBLOCK_SIZE;j++){
 			if((block->u)[j] > 0){
@@ -361,6 +378,7 @@ void usage_stats(void){
 	printf("T_gave_prediction:     %d\n",T_gave_prediction);
 	printf("T_correct_prediction:  %d\n",T_correct_prediction);
 	printf("\n");
+	
 	for(i = 0; i < NUMBER_T_BLOCKS; i++){
 		printf("T%d number of useful entries: %d\n", i, num_use[i]);
 	}
@@ -369,8 +387,6 @@ void usage_stats(void){
 	for(i=0;i<(GHR_LENGTH+32)/32;i++){
 		printb(GHR[i]);
 	}
-	printb(0x21219393);
-	printb(100);
 	printf("\n\n");
 }
 
@@ -380,14 +396,13 @@ void random_break(void){
 void increment_u(TBlock* tblock, int i){
 	counter++;
 	(tblock->u)[i] = (((tblock->u)[i] + 1) > 3) ? 3 : ((tblock->u)[i] + 1);
-	//(tblock->u)[i] = ((tblock->u)[i] + 1);
 	return;
 }
 void decrement_u(TBlock* tblock, int i){
 	(tblock->u)[i] = (((tblock->u)[i] - 1) < 0) ? 0 : ((tblock->u)[i] - 1);
 	return;
 }
-void allocate_row(TBlock* tblock, int index, bool taken, int tag, int u){
+void allocate_row(TBlock* tblock, int index, bool taken, UINT32 tag, int u){
 	(tblock->tag)[index] = tag;
 	(tblock->u)[index] = u;
 	(tblock->bimodal)[index] = (taken == TAKEN) ? 4 : 3;
@@ -518,215 +533,4 @@ UINT32 hash2(UINT32 PC, int length){
 	return accumulator;*/
 }
 
-/*UINT32 hash2(UINT32 PC, int level){
-	UINT32 GHR_int = 0;
-	int mask = 0xFFFFFFFF;
-	int i;
-	int hash;
 
-
-	for
-
-	if(level < 5)
-	{
-		mask = mask >> (32 - (2 << level));
-		GHR_int = GHR[0] & mask;
-	}
-	else if (level == 5)
-	{
-		GHR_int = GHR[0];
-	}
-	else
-	{
-		level = level - 5;
-		for(i=0; i < level ; i++)
-		{
-			GHR_int = GHR[i] * 33 + GHR_int;			
-		}	
-	}
-
-}
-*/
-/*
-#define N_BUDGET 17
-
-#define NUMBER_T_BLOCKS 7
-#define TBLOCK_SIZE 1024
-#define INIT_BIMODAL_STATE 3
-#define INIT_USABILITY_LEVEL 0
-#define HISTORY_LENGTH 150
-
-#define FIRST_BLOCK_SIZE 8192
-
-typedef struct TBlocks{
-  int bimodal[TBLOCK_SIZE];
-  unsigned int tag[TBLOCK_SIZE]; 
-  int u[TBLOCK_SIZE];
-} TBlock;
-
-unsigned int hash_1(UINT32, int*, int);
-int entry_exists(TBlock*, unsigned int);
-bool to_take(int);
-int update_bimodal_counter(int, bool);
-int find_empty(TBlock*);
-void decrement_all_useful(TBlock*);
-int rand_select_Tblock(int);
-
-int* FirstBlock;
-TBlock **all_Tblocks;
-int BHR[HISTORY_LENGTH] = {0};
-int history_depths[NUMBER_T_BLOCKS] = {2,4,8,17,36,73,150};
-
-unsigned int hash_results[NUMBER_T_BLOCKS] = {0};
-int pred_results[NUMBER_T_BLOCKS] = {0};
-int mux_results[NUMBER_T_BLOCKS] = {0};
-
-void InitPredictor_openend() {
-	int i, j;
-	FirstBlock = (int*)malloc(FIRST_BLOCK_SIZE*sizeof(int));
-	for(i = 0; i < FIRST_BLOCK_SIZE; i++){
-		FirstBlock[i] = INIT_BIMODAL_STATE;
-	}
-	
-	all_Tblocks = (TBlock**)malloc(NUMBER_T_BLOCKS*sizeof(TBlock*));
-	for(i = 0; i < NUMBER_T_BLOCKS; i++){
-		*(all_Tblocks + i) = (TBlock*)calloc(1,sizeof(TBlock));
-		for(j = 0; j < TBLOCK_SIZE; j++){
-			((*(all_Tblocks + i)) -> bimodal)[j] = (int)INIT_BIMODAL_STATE;
-			((*(all_Tblocks + i)) -> u)[j] = (int)INIT_USABILITY_LEVEL;
-		}
-	}
-}
-
-bool GetPrediction_openend(UINT32 PC) {
-	int i;
-	for(i = 0; i < NUMBER_T_BLOCKS; i++){
-		int entry_index;
-		hash_results[i] = hash_1(PC, BHR, history_depths[i]);
-		entry_index = entry_exists(*(all_Tblocks+i), hash_results[i]);
-		if(entry_index == -1){
-			mux_results[i] = 0;
-		} else {
-			pred_results[i] = ((*(all_Tblocks + i)) -> bimodal)[entry_index];
-			mux_results[i] = 1;
-		}
-	}
-	
-	int outcome = FirstBlock[(PC>>2)&8191];
-	for(i = NUMBER_T_BLOCKS - 1; i >=0; i--){
-		if(mux_results[i] == 1){
-			outcome = pred_results[i];
-			break;
-		}
-	} 
-	return to_take(outcome);
-}
-
-void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-	int i = 0, j, entry_index, not_useful_index, target_tblock;
-	TBlock *tblock = NULL;
-	for(i = NUMBER_T_BLOCKS - 1; i >= 0; i--){
-		if(mux_results[i] == 1){
-			break;
-		}
-	}
-	if(i<0){
-		i = 0;
-	}
-	
-	// i is the index of which T block gave the correct prediction
-	if(i == 0 && mux_results[i] == 0){	//Result came from T0
-		FirstBlock[(PC>>2)&8191] = update_bimodal_counter(FirstBlock[(PC>>2)&8191],resolveDir);
-	} 
-	else {	//Otherwise result came from one of the Tblocks
-		tblock = *(all_Tblocks + i);
-		entry_index = entry_exists(tblock, hash_results[i]);
-		(tblock->bimodal)[entry_index] = update_bimodal_counter((tblock->bimodal)[entry_index],resolveDir);	
-	}
-	
-	if(resolveDir != predDir){	//If the prediction was false
-		if(tblock == NULL){	//Start search at T1
-			target_tblock = rand_select_Tblock(0);
-		} else {	//Otherwise, start search from i + 1
-			target_tblock = rand_select_Tblock(i + 1);
-		}
-		tblock = *(all_Tblocks + target_tblock);
-		not_useful_index = find_empty(tblock);
-		if(not_useful_index != -1){
-			tblock->tag[not_useful_index] = hash_results[i];
-			tblock->bimodal[not_useful_index] = INIT_BIMODAL_STATE;
-			tblock->u[not_useful_index] = INIT_USABILITY_LEVEL;
-		} else {
-			decrement_all_useful(tblock);	
-		}	
-			
-	}
-
-	for(j = HISTORY_LENGTH - 1; j >= 1; j--){
-		BHR[j] = BHR[j-1];
-	}
-	BHR[0] = (resolveDir == TAKEN) ? 1 : 0;
-}
-
-int entry_exists(TBlock* tblock, unsigned int hash){
-  int i;
-  for(i = 0; i < TBLOCK_SIZE; i++){
-    if(((tblock->tag)[i] == hash)){
-      return i;
-    }
-  }
-  return -1;
-}
-
-unsigned int hash_1(UINT32 PC, int* HR, int length){
-  unsigned int hash = (unsigned int)PC;
-  int i;
-  for(i = 0; i < length; i++){
-    hash = (unsigned int)(pow((double)2, (double)(length - i - 1))*(double)(HR[i])) + hash;
-  }
-  return hash;
-}
-
-bool to_take(int prediction){
-	return (prediction <= 3) ? NOT_TAKEN : TAKEN;
-}
-
-int update_bimodal_counter(int current, bool taken){
-	if(taken == TAKEN){
-		return ((current + 1) > 7) ? 7 : (current + 1);
-	} else {
-		return ((current - 1) < 0) ? 0 : (current - 1);
-	}
-}
-
-int find_empty(TBlock* tblock){
-	int i;
-	for(i = 0; i < TBLOCK_SIZE; i++){
-		if((tblock->u)[i] == 0){
-			return i;
-		}
-	}
-	return -1;
-}
-
-void decrement_all_useful(TBlock* tblock){
-	int i;
-	for(i = 0; i < TBLOCK_SIZE; i++){
-		(tblock->u)[i] = (((tblock->u)[i] - 1) < 0) ? 0 : ((tblock->u)[i] - 1);
-	}
-}
-
-int rand_select_Tblock(int start){
-	//start is where we start searching
-	int i, result = 0;
-	if(start == NUMBER_T_BLOCKS){
-		return NUMBER_T_BLOCKS-1;
-	}
-	for(i = 0; i < (NUMBER_T_BLOCKS-start); i++){
-		if((rand()%3) > 0){	// two-thirds chance
-			result = i;
-			break;
-		}
-	}
-	return start+result;
-}*/
