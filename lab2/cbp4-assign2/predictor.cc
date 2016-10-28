@@ -241,7 +241,7 @@ int predict_block_index;
 int predict_block_was_last;
 UINT32 hash1_results[NUMBER_T_BLOCKS];
 UINT32 hash2_results[NUMBER_T_BLOCKS];
-int hash_lengths[NUMBER_T_BLOCKS] = {0,2,4,8,16,32,64,128,512};
+int hash_lengths[NUMBER_T_BLOCKS] = {0,5,10,18,32,64,84,150,512};
 int counter = 0; 
 
 //Debugging
