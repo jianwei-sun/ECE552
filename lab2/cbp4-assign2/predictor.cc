@@ -165,11 +165,12 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 #define NUMBER_T_BLOCKS 9
 #define TBLOCK_SIZE 8192
 #define FIRST_BLOCK_SIZE 8192 //Fixed number
-#define FIRST_BLOCK_PC_MASK 0x00007FFC  //Based on the above fixed number
+#define FIRST_BLOCK_PC_MASK 0x000001FF  //Based on the above fixed number
 #define INIT_BIMODAL_STATE 3 //Weak not taken for a 3 bit counter
 #define INIT_USABILITY_LEVEL 0  //No usefulness for a 2 bit counter
 #define GHR_LENGTH 512
 #define TAG_SIZE 11
+#define RESET_PERIOD 500000
 
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -195,7 +196,6 @@ void update_GHR(bool);
 UINT32 hash1(UINT32,int);
 UINT32 hash2(UINT32,int);
 
-
 //Global variables
 UINT32 GHR[(GHR_LENGTH+32)/32] = {0};
 TBlock **all_Tblocks;
@@ -205,18 +205,21 @@ int predict_block_was_last;
 UINT32 hash1_results[NUMBER_T_BLOCKS];
 UINT32 hash2_results[NUMBER_T_BLOCKS];
 int hash_lengths[NUMBER_T_BLOCKS] = {0,5,10,18,32,64,84,150,512};
-int TSIZES[NUMBER_T_BLOCKS] = {512,512,1024,1024,1024,1024,1024,1024,1024};
+int TSIZES[NUMBER_T_BLOCKS] = {512,896,1024,1024,1024,1024,1024,1024,1024};
+int branch_counter = 0;
 
 //Initializes all the data structures
 void InitPredictor_openend() {
 	int i,j;
+	//all_Tblocks is an array of TBlock pointers
 	all_Tblocks = (TBlock**)malloc(NUMBER_T_BLOCKS*sizeof(TBlock*));
 	for(i = 0; i < NUMBER_T_BLOCKS; i++){
+		//For each TBlock, allocate size for the various pointers
 		*(all_Tblocks + i) = (TBlock*)calloc(1,sizeof(TBlock));
 		(*(all_Tblocks + i)) -> bimodal = (int*)malloc(TSIZES[i]*sizeof(int));
 		(*(all_Tblocks + i)) -> tag = (UINT32*)malloc(TSIZES[i]*sizeof(UINT32));
 		(*(all_Tblocks + i)) -> u = (int*)malloc(TSIZES[i]*sizeof(int));
-
+		//For each pointer type, allocate according to how much space is given to the TBlock
 		for(j = 0; j < TSIZES[i]; j++){
 			((*(all_Tblocks + i)) -> bimodal)[j] = (int)INIT_BIMODAL_STATE;
 			((*(all_Tblocks + i)) -> u)[j] = (int)INIT_USABILITY_LEVEL;
@@ -227,39 +230,40 @@ void InitPredictor_openend() {
 }
 
 bool GetPrediction_openend(UINT32 PC) {
+	branch_counter++;
 	//Compute all of the hashes
 	int i;
 	TBlock *block;
 	bool prediction;
 	//Get the prediction from the T0 block as the default prediction
-	prediction = get_prediction(((all_Tblocks[0])->bimodal)[(PC&FIRST_BLOCK_PC_MASK)>>2]);
+	prediction = get_prediction(((all_Tblocks[0])->bimodal)[PC%TSIZES[0]]);
+	//Record details about prediction to make accessing easier in UpdatePredictor
 	predict_block = all_Tblocks[0];
 	predict_block_index = 0;
 	predict_block_was_last = 0;
 	for(i = NUMBER_T_BLOCKS-1; i > 0; i--){
-		hash1_results[i] = hash1(PC, hash_lengths[i]);
-		hash1_results[i] = (hash1_results[i])%(TSIZES[i]);
+		//Iterate from longest history block to the shortest history block
+		hash1_results[i] = hash1(PC, hash_lengths[i])%(TSIZES[i]);
 		hash2_results[i] = hash2(PC, hash_lengths[i])%(0x00000001<<TAG_SIZE);		
 		block = all_Tblocks[i];
-		if(((block->tag)[hash1_results[i]%(TSIZES[i])]) == hash2_results[i]){  //Get the prediction if tags match			
+		if(*((block->tag)+hash1_results[i]) == hash2_results[i]){  //Get the prediction if tags match
+			//And break and use the resulting prediction as TAGE's prediction			
 			prediction = get_prediction((block->bimodal)[hash1_results[i]]);
 			predict_block = block;
 			predict_block_index = i;
 			predict_block_was_last = (i == (NUMBER_T_BLOCKS-1));
-
 			break;
-		} else {  //Otherwise, look at the next shorter-history-length tblock
+		} else {  //Otherwise, loop k at the next shorter-history-length tblock
 			continue;
 		}
 	}
-	i = (i<0) ? 0 : i; //Make sure is not -1
 	return prediction;
 }
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
 	//Update bimodal
 	if(predict_block_index == 0){
-		update_bimodal(predict_block,(PC&FIRST_BLOCK_PC_MASK)>>2,resolveDir);
+		update_bimodal(predict_block,PC%TSIZES[0],resolveDir);
 	} else {
 		update_bimodal(predict_block,hash1_results[predict_block_index],resolveDir);
 	}
@@ -284,25 +288,30 @@ void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 br
 			}
 		}
 	}
+	//Update the global history register to track the resolveDir
 	update_GHR(resolveDir);
-	return;
+	//Reset occasionally for small improvement
 }
-
 void increment_u(TBlock* tblock, int i){
+	//Increment u by one, making sure not to overflow
 	(tblock->u)[i] = (((tblock->u)[i] + 1) > 3) ? 3 : ((tblock->u)[i] + 1);
 	return;
 }
 void decrement_u(TBlock* tblock, int i){
+	//Decrement u by one, making sure not to underflow
 	(tblock->u)[i] = (((tblock->u)[i] - 1) < 0) ? 0 : ((tblock->u)[i] - 1);
 	return;
 }
 void allocate_row(TBlock* tblock, int index, bool taken, UINT32 tag, int u){
+	//Creates an entry in a Tblock given initialization variables
 	(tblock->tag)[index] = tag;
 	(tblock->u)[index] = u;
 	(tblock->bimodal)[index] = (taken == TAKEN) ? 4 : 3;
 	return;
 }
 void update_bimodal(TBlock* tblock, int index, bool taken){
+	//Update the bimodal counter given the branch state
+	//Ensures no overflowing or underflowing occurs
 	int current = (tblock->bimodal)[index];
 	if(taken == TAKEN){
 		(tblock->bimodal)[index] = ((current + 1) > 7) ? 7 : (current + 1);
@@ -312,6 +321,7 @@ void update_bimodal(TBlock* tblock, int index, bool taken){
 	return;
 }
 bool get_prediction(int bimodal_count){
+	//Parse the bimodal counter to yield a boolean result
 	if(bimodal_count < 4){
 		return NOT_TAKEN;
 	} else {
@@ -319,9 +329,11 @@ bool get_prediction(int bimodal_count){
 	}
 }
 void update_GHR(bool taken){
+	//Essentially shifts everything by one location
 	int GHR_size = (GHR_LENGTH+32)/32;
 	int i = GHR_size - 1;
 	UINT32 msb, old_msb;
+	//Records the new branch result
 	if(taken == TAKEN){
 		old_msb = 0x00000001;
 	} else {
@@ -341,6 +353,7 @@ void update_GHR(bool taken){
 	return;
 }
 UINT32 hash1(UINT32 PC, int length){
+	//Takes a width of 13 and folds the GHR and PC into a stack, then XOR
 	int i = 0, ratio = length%32,full_ints = length/32,num_GHRs = GHR_LENGTH/32+1;
 	UINT32 hash = 0, temp = PC>>2, accumulator = 0;
 	while(temp != 0){
@@ -365,6 +378,7 @@ UINT32 hash1(UINT32 PC, int length){
 }
 
 UINT32 hash2(UINT32 PC, int length){
+	//Takes a width of 7 and folds the GHR and PC into a stack, then XOR
 	int i = 0, ratio = length%32,full_ints = length/32,num_GHRs = GHR_LENGTH/32+1;
 	UINT32 hash = 0, temp = PC>>2, accumulator = 0;
 	while(temp != 0){
