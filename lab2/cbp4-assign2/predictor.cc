@@ -6,43 +6,6 @@
 
 #include "predictor.h"
 #include <math.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define for_endian(size) for (int i = 0; i < size; ++i)
-#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define for_endian(size) for (int i = size - 1; i >= 0; --i)
-#else
-#error "Endianness not detected"
-#endif
-
-#define printb(value)                                   \
-({                                                      \
-        typeof(value) _v = value;                       \
-        __printb((typeof(_v) *) &_v, sizeof(_v));       \
-})
-
-void __printb(void *value, size_t size)
-{
-        uint8_t byte;
-        size_t blen = sizeof(byte) * 8;
-        uint8_t bits[blen + 1];
-
-        bits[blen] = '\0';
-        for_endian(size) {
-                byte = ((uint8_t *) value)[i];
-                memset(bits, '0', blen);
-                for (int j = 0; byte && j < blen; ++j) {
-                        if (byte & 0x80)
-                                bits[j] = '1';
-                        byte <<= 1;
-                }
-                printf("%s ", bits);
-        }
-        printf("\n");
-}
 
 #define TWO_BIT_SAT_TABLE_SIZE 8192
 /////////////////////////////////////////////////////////////
@@ -231,7 +194,6 @@ bool get_prediction(int);
 void update_GHR(bool);
 UINT32 hash1(UINT32,int);
 UINT32 hash2(UINT32,int);
-void random_break(void);
 
 
 //Global variables
@@ -244,13 +206,6 @@ UINT32 hash1_results[NUMBER_T_BLOCKS];
 UINT32 hash2_results[NUMBER_T_BLOCKS];
 int hash_lengths[NUMBER_T_BLOCKS] = {0,5,10,18,32,64,84,150,512};
 int TSIZES[NUMBER_T_BLOCKS] = {512,512,1024,1024,1024,1024,1024,1024,1024};
-int counter = 0; 
-
-//Debugging
-int T0_gave_prediction = 0;
-int T0_correct_prediction = 0;
-int T_gave_prediction = 0;
-int T_correct_prediction = 0;
 
 //Initializes all the data structures
 void InitPredictor_openend() {
@@ -284,13 +239,9 @@ bool GetPrediction_openend(UINT32 PC) {
 	for(i = NUMBER_T_BLOCKS-1; i > 0; i--){
 		hash1_results[i] = hash1(PC, hash_lengths[i]);
 		hash1_results[i] = (hash1_results[i])%(TSIZES[i]);
-		//hash1_results[i] = (hash1(PC, hash_lengths[i]));
 		hash2_results[i] = hash2(PC, hash_lengths[i])%(0x00000001<<TAG_SIZE);		
-		//hash1_results[i] = PC%TBLOCK_SIZE;
-		//hash2_results[i] = PC;
 		block = all_Tblocks[i];
 		if(((block->tag)[hash1_results[i]%(TSIZES[i])]) == hash2_results[i]){  //Get the prediction if tags match			
-			T_gave_prediction= T_gave_prediction+1;
 			prediction = get_prediction((block->bimodal)[hash1_results[i]]);
 			predict_block = block;
 			predict_block_index = i;
@@ -302,26 +253,13 @@ bool GetPrediction_openend(UINT32 PC) {
 		}
 	}
 	i = (i<0) ? 0 : i; //Make sure is not -1
-	if(i == 0) {T0_gave_prediction++;}
 	return prediction;
 }
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-	/*counter ++;
-	if(counter > 1000000){
-		random_break();
-	}*/
-	if(predict_block_index == 0){
-		if(resolveDir == predDir){
-			T0_correct_prediction++;}
-	}else{
-		if(resolveDir == predDir){
-			T_correct_prediction++;}
-	}
 	//Update bimodal
 	if(predict_block_index == 0){
 		update_bimodal(predict_block,(PC&FIRST_BLOCK_PC_MASK)>>2,resolveDir);
-		//(predict_block->tag)[(PC&FIRST_BLOCK_PC_MASK)>>2] = 1;
 	} else {
 		update_bimodal(predict_block,hash1_results[predict_block_index],resolveDir);
 	}
@@ -350,51 +288,7 @@ void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 br
 	return;
 }
 
-void usage_stats(void){
-	printf("PRINTING USAGE STATS:\n");
-	int i,j,num_use[NUMBER_T_BLOCKS] = {0};
-	TBlock* block;
-
-	block = all_Tblocks[0];
-	for(j=0;j<TBLOCK_SIZE;j++){
-		if((block->tag)[j] != 0){
-			num_use[0]++;
-			//printf("Block%d Entry%d u value%d\n",i,j,(block->u)[j]);
-		}
-	}
-	
-	for(i = 1; i < NUMBER_T_BLOCKS; i++){
-		block = all_Tblocks[i];
-		for(j=0;j<TBLOCK_SIZE;j++){
-			if((block->u)[j] > 0){
-				num_use[i]++;
-				//printf("Block%d Entry%d u value%d\n",i,j,(block->u)[j]);
-			}
-		}
-	}
-	
-	printf("T0_gave_prediction:    %d\n",T0_gave_prediction);
-	printf("T0_correct_prediction: %d\n",T0_correct_prediction);
-	printf("T_gave_prediction:     %d\n",T_gave_prediction);
-	printf("T_correct_prediction:  %d\n",T_correct_prediction);
-	printf("\n");
-	
-	for(i = 0; i < NUMBER_T_BLOCKS; i++){
-		printf("T%d number of useful entries: %d\n", i, num_use[i]);
-	}
-	printf("\nnumber of u increments: %d\n",counter);
-	printf("\nGHR:\n");
-	for(i=0;i<(GHR_LENGTH+32)/32;i++){
-		printb(GHR[i]);
-	}
-	printf("\n\n");
-}
-
-void random_break(void){
-	return;
-}
 void increment_u(TBlock* tblock, int i){
-	counter++;
 	(tblock->u)[i] = (((tblock->u)[i] + 1) > 3) ? 3 : ((tblock->u)[i] + 1);
 	return;
 }
@@ -447,7 +341,6 @@ void update_GHR(bool taken){
 	return;
 }
 UINT32 hash1(UINT32 PC, int length){
-	//Need 13 bits to index 8192 entries
 	int i = 0, ratio = length%32,full_ints = length/32,num_GHRs = GHR_LENGTH/32+1;
 	UINT32 hash = 0, temp = PC>>2, accumulator = 0;
 	while(temp != 0){
@@ -469,29 +362,6 @@ UINT32 hash1(UINT32 PC, int length){
 		}
 	}
 	return hash;
-	/*return PC;
-	int full_ints = length/32;
-	int ratio = length%32;
-	UINT32 hash, accumulator = 0, prime = 31;
-	int num_GHRs = GHR_LENGTH/32+1;
-	int i;
-	for(i = 0; i < ratio; i++){
-		accumulator |= (GHR[num_GHRs - full_ints - 1]&(1<<i));
-	}
-	for(i = 0; i < full_ints; i++){
-		accumulator ^= (prime * GHR[num_GHRs-i-1]);
-	}	
-
-	hash = max(PC, accumulator);
-	if(hash == accumulator)
-	{
-		hash = PC*PC + accumulator;
-	}
-	else
-	{
-		hash = accumulator*accumulator + accumulator + PC;
-	}
-	return hash;*/
 }
 
 UINT32 hash2(UINT32 PC, int length){
@@ -516,21 +386,6 @@ UINT32 hash2(UINT32 PC, int length){
 		}
 	}
 	return hash;
-
-	/*int full_ints = length/32;
-	int ratio = length%32;
-	UINT32 accumulator = 0, prime = 1500450271, offset = 3267000013;
-	int num_GHRs = GHR_LENGTH/32+1;
-	int i;
-	for(i = 0; i < ratio; i++){
-		accumulator |= (GHR[num_GHRs - full_ints - 1]&(1<<i));
-	}
-	accumulator += offset;
-	for(i = 0; i < full_ints; i++){
-		accumulator ^= (prime * GHR[num_GHRs-i-1]);
-	}	
-	accumulator ^= (prime * PC);
-	return accumulator;*/
 }
 
 
