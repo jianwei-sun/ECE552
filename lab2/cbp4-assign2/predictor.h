@@ -22,6 +22,8 @@ void InitPredictor_openend();
 bool GetPrediction_openend(UINT32 PC);  
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget);
 
+void usage_stats(void);
+
 /////////////////////////////////////////////////////////////
 
 #endif

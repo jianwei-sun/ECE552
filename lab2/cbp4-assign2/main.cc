@@ -106,6 +106,8 @@ int main(int argc, char* argv[]){
       printf("\nopenend: NUM_MISPREDICTIONS   \t : %10llu",   numMispred_openend);
       printf("\nopenend: MISPRED_PER_1K_INST  \t : %10.3f",   1000.0*(double)(numMispred_openend)/(double)(tracer->GetNumInst()));
       printf("\n\n");
+
+	usage_stats();
 }
 
 
