@@ -87,11 +87,11 @@ static instruction_t* instr_queue[INSTR_QUEUE_SIZE + 1];
 //push index 1 before pop index means queue is full
 int ifq_push_index = 0;
 int ifq_pop_index = 0;
-/* ECE552 Assignment 3 - END CODE */
+
 
 
 //number of instructions in the instruction queue
-static int instr_queue_size = 0;
+static int instr_queue_count = 0;
 
 //reservation stations (each reservation station entry contains a pointer to an instruction)
 static instruction_t* reservINT[RESERV_INT_SIZE];
@@ -109,13 +109,32 @@ static instruction_t* map_table[MD_TOTAL_REGS];
 
 //the index of the last instruction fetched
 static int fetch_index = 0;
+/* MAP TABLE */
+int MT[MD_TOTAL_REGS];
 
 /* FUNCTIONAL UNITS */
 
 
 /* RESERVATION STATIONS */
+typedef struct RESERVATION_STATION{
+	instruction_t** FU;
+	bool busy;
+	instruction_t* instruction;
+	int R0;
+	int R1;
+	int T0;
+	int T1;
+	int T2;
+	UINT32 V0;
+	UINT32 V1;
+	UINT32 V2;
+} RS;
+
+RS all_intRS[RESERV_INT_SIZE];
+RS all_fpRS[RESERV_FP_SIZE];
 
 
+/* ECE552 Assignment 3 - END CODE */
 /* 
  * Description: 
  * 	Checks if simulation is done by finishing the very last instruction
@@ -189,13 +208,53 @@ void dispatch_To_issue(int current_cycle) {
 	instruction_t* dispatched_insn;
 	//Check what type of instruction to figure out what RS is needed
 	//Then see if that station is busy so we move it over
-
+	bool RS_has_room = false;
 	//If not empty, then proceed with pop
 	if(ifq_pop_index != ifq_push_index){
 		dispatched_insn = instr_queue[ifq_pop_index];
-		ifq_pop_index = (ifq_pop_index + 1) % (INSTR_QUEUE_SIZE + 1);
-		instr_queue_size--;
+	} else {
+		return;
 	}
+		
+	//Check if the instruction uses an integer functional unit
+	if(USES_INT_FU(dispatched_insn)){
+		//Check the 4 integer RS's for their busy bit
+		int i;
+		for(i = 0; i < RESERV_INT_SIZE; i++){
+			if(all_intRS[i].busy == false){
+				//If there is room in the RS, allocate
+				all_intRS[i].busy = true;
+				all_intRS[i].instruction = dispatched_insn;
+				//For input registers, check if they are waiting on other RS's
+				//If not, then get the value from the physical registers
+				if(MT[(dispatched_insn -> r_in)[0]] == -1){
+					all_intRS[i].T0 = -1;			
+					all_intRS[i].V0 = 
+				} else {
+					all_intRS[i].T0 = MT[(dispatched_insn -> r_in)[0]];
+				}
+
+				//Update the output registers in the map table
+				all_intRS[i].R0 = (dispatched_insn -> r_out)[0];
+				all_intRS[i].R1 = (dispatched_insn -> r_out)[1];
+				MT[(dispatched_insn -> r_out)[0]] = i;
+				MT[(dispatched_insn -> r_out)[1]] = i;
+				RS_has_room = true;
+				break;
+			}
+		}
+	} else if(USES_FP_FU(dispatched_insn)){
+		
+	} else{
+
+	}
+
+	//Remove the instruction from the IFQ if it was successfully moved into the RS
+	if(RS_has_room){
+		ifq_pop_index = (ifq_pop_index + 1) % (INSTR_QUEUE_SIZE + 1);
+		instr_queue_count--;
+	}
+	return;
 }
 /* ECE552 Assignment 3 - END CODE */
 
@@ -218,7 +277,7 @@ void fetch(instruction_trace_t* trace) {
 	//fetched instruction, and add it to the IFQ
 	instr_queue[ifq_push_index] = fetched_insn;
 	ifq_push_index = (ifq_push_index + 1) % (INSTR_QUEUE_SIZE + 1);
-	instr_queue_size++;
+	instr_queue_count++;
   	return;
 }
 /* ECE552 Assignment 3 - END CODE */
@@ -239,6 +298,7 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 	if(((ifq_push_index+1)%(INSTR_QUEUE_SIZE + 1))!=ifq_pop_index){
 		fetch(trace);
 	}
+
 }
 /* ECE552 Assignment 3 - END CODE */
 
@@ -270,6 +330,33 @@ counter_t runTomasulo(instruction_trace_t* trace)
       reservFP[i] = NULL;
   }
 
+	for(i = 0; i < RESERV_INT_SIZE; i++){
+		all_intRS[i].FU = (fuINT+i)
+		all_intRS[i].busy = false;
+		all_intRS[i].instruction = NULL;
+		all_intRS[i].R0 = -1;
+		all_intRS[i].R1 = -1;
+		all_intRS[i].T0 = -1;
+		all_intRS[i].T1 = -1;
+		all_intRS[i].T2 = -1;
+		all_intRS[i].V0 = 0;
+		all_intRS[i].V1 = 0;
+		all_intRS[i].V2 = 0;
+	}
+	for(i = 0; i < RESERV_FP_SIZE; i++){
+		all_fpRS[i].FU = (fuFP+i)
+		all_fpRS[i].busy = false;
+		all_fpRS[i].instruction = NULL;
+		all_intRS[i].R0 = -1;
+		all_intRS[i].R1 = -1;
+		all_intRS[i].T0 = -1;
+		all_intRS[i].T1 = -1;
+		all_intRS[i].T2 = -1;
+		all_intRS[i].V0 = 0;
+		all_intRS[i].V1 = 0;
+		all_intRS[i].V2 = 0;
+	}
+fuINT[FU_INT_SIZE];
   //initialize functional units
   for (i = 0; i < FU_INT_SIZE; i++) {
     fuINT[i] = NULL;
@@ -283,6 +370,7 @@ counter_t runTomasulo(instruction_trace_t* trace)
   int reg;
   for (reg = 0; reg < MD_TOTAL_REGS; reg++) {
     map_table[reg] = NULL;
+	MT[reg] = -1;
   }
   
   int cycle = 1;
