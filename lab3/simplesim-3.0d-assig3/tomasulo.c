@@ -113,12 +113,20 @@ static int fetch_index = 0;
 int MT[MD_TOTAL_REGS];
 
 /* FUNCTIONAL UNITS */
+typedef struct FUNCITONAL_UNIT{
+	instruction_t* inst;
+	int cycles_to_completion;
+	int rs;
+} FU;
 
+FU all_intFU[FU_INT_SIZE];
+FU all_fpFU[FU_FP_SIZE];
 
 /* RESERVATION STATIONS */
 typedef struct RESERVATION_STATION{
 	instruction_t** FU;
 	bool busy;
+	bool executing;
 	instruction_t* instruction;
 	int R0;
 	int R1;
@@ -132,6 +140,14 @@ typedef struct RESERVATION_STATION{
 
 RS all_intRS[RESERV_INT_SIZE];
 RS all_fpRS[RESERV_FP_SIZE];
+
+/* CDB */
+typedef struct COMMON_DATA_BUS{
+	int T;
+	UINT32 V;
+} CDB;
+
+CDB cdb;
 
 
 /* ECE552 Assignment 3 - END CODE */
@@ -175,9 +191,63 @@ void CDB_To_retire(int current_cycle) {
  * 	None
  */
 void execute_To_CDB(int current_cycle) {
+	//Check which instructions are done executing
+	int i;
+	for(i = 0; (i < FU_INT_SIZE) && (cdb.T == -1); i++){	
+		if((all_intFU[i].cycles_to_completion == 0)){
+			rs_number = all_intFU[i].rs;
+			cdb.T = rs_number;
+			all_intFU[i].inst = NULL;
+			all_intRS[rs_number].busy = false;
+			all_intRS[rs_number].executing = false;
+			int j;
+			for(j = 0; j < RESERV_INT_SIZE; j++){
+				if(all_intRS[j].T0 == rs_number){
+					all_intRS[j].T0 = -1;
+				}
+				if(all_intRS[j].T1 == rs_number){
+					all_intRS[j].T1 = -1;
+				}
+				if(all_intRS[j].T2 == rs_number){
+					all_intRS[j].T2 = -1;
+				} 
+			}
+			break;
+		}
+	}
+	for(i = 0; (i < FU_FP_SIZE) && (cdb.T == -1); i++){	
+		if((all_fpFU[i].cycles_to_completion == 0)){
+			rs_number = all_fpFU[i].rs;
+			cdb.T = rs_number;
+			all_fpFU[i].inst = NULL;
+			all_fpRS[rs_number].busy = false;
+			all_fpRS[rs_number].executing = false;
+			int j;
+			for(j = 0; j < RESERV_FP_SIZE; j++){
+				if(all_fpRS[j].T0 == rs_number){
+					all_fpRS[j].T0 = -1;
+				}
+				if(all_fpRS[j].T1 == rs_number){
+					all_fpRS[j].T1 = -1;
+				}
+				if(all_fpRS[j].T2 == rs_number){
+					all_fpRS[j].T2 = -1;
+				} 
+			}
+			break;
+		}
+	}
 
-  /* ECE552: YOUR CODE GOES HERE */
-
+	//Allow all instructions inside functional units to progress by 1 cycle
+	for(i = 0; i < FU_INT_SIZE; i++){
+		if(all_intFU[i].inst == NULL){
+			continue;
+		} else {
+			//Ensure count does not become negative because we could be stalling for a free cdb
+			new_cyc = all_intFU[i].cycles_to_completion - 1;
+			all_intFU[i].cycles_to_completion = new_cyc < 0 ? 0 : new_cyc;
+		}
+	}
 }
 
 /* 
@@ -191,8 +261,59 @@ void execute_To_CDB(int current_cycle) {
  * 	None
  */
 void issue_To_execute(int current_cycle) {
-
-  /* ECE552: YOUR CODE GOES HERE */
+	//See which instructions from the RS are ready to be executed
+	int i;
+	for(i = 0; i < RESERV_INT_SIZE; i++){
+		//Check if instruction is already in the functional unit
+		if(all_intRS[i].executing){			
+			continue;
+		}
+		//Check if an instruction in the RS is ready to be moved to execution
+		if((all_intRS[i].T0 == -1)&&(all_intRS[i].T1 == -1)&&(all_intRS[i].T2 == -1)){
+			//Check if there is room in the functional unit
+			int j;
+			bool full = true;
+			for(j = 0; j < FU_INT_SIZE; j++){
+				if(all_intFU[j].inst == NULL){
+					full = false;
+					break;
+				}
+			}	
+			//If there is room in the functional unit
+			if(!full){
+				//Move the instruction to execution
+				all_intFU[j].inst = all_intRS[i].instruction;
+				all_intFU[j].cycles_to_completion = FU_INT_LATENCY;
+				all_intRS[i].executing = true;
+			}
+		}
+	}
+	//Perform the same for the floating point instructions
+	for(i = 0; i < RESERV_FP_SIZE; i++){
+		//Check if instruction is already in the functional unit
+		if(all_fpRS[i].executing){			
+			continue;
+		}
+		//Check if an instruction in the RS is ready to be moved to execution
+		if((all_fpRS[i].T0 == -1)&&(all_fpRS[i].T1 == -1)&&(all_fpRS[i].T2 == -1)){
+			//Check if there is room in the functional unit
+			int j;
+			bool full = true;
+			for(j = 0; j < FU_FP_SIZE; j++){
+				if(all_fpFU[j].inst == NULL){
+					full = false;
+					break;
+				}
+			}	
+			//If there is room in the functional unit
+			if(!full){
+				//Move the instruction to execution
+				all_fpFU[j].inst = all_fpRS[i].instruction;
+				all_fpFU[j].cycles_to_completion = FU_FP_LATENCY;
+				all_fpRS[i].executing = true;
+			}
+		}
+	}
 }
 
 /* ECE552 Assignment 3 - BEGIN CODE */
@@ -229,7 +350,7 @@ void dispatch_To_issue(int current_cycle) {
 				//If not, then get the value from the physical registers
 				if(MT[(dispatched_insn -> r_in)[0]] == -1){
 					all_intRS[i].T0 = -1;			
-					all_intRS[i].V0 = 
+					all_intRS[i].V0 = //NEED TO GET VALUE FROM REGISTER MAP
 				} else {
 					all_intRS[i].T0 = MT[(dispatched_insn -> r_in)[0]];
 				}
@@ -333,6 +454,7 @@ counter_t runTomasulo(instruction_trace_t* trace)
 	for(i = 0; i < RESERV_INT_SIZE; i++){
 		all_intRS[i].FU = (fuINT+i)
 		all_intRS[i].busy = false;
+		all_intRS[i].executing = false;
 		all_intRS[i].instruction = NULL;
 		all_intRS[i].R0 = -1;
 		all_intRS[i].R1 = -1;
@@ -344,27 +466,25 @@ counter_t runTomasulo(instruction_trace_t* trace)
 		all_intRS[i].V2 = 0;
 	}
 	for(i = 0; i < RESERV_FP_SIZE; i++){
-		all_fpRS[i].FU = (fuFP+i)
-		all_fpRS[i].busy = false;
-		all_fpRS[i].instruction = NULL;
-		all_intRS[i].R0 = -1;
-		all_intRS[i].R1 = -1;
-		all_intRS[i].T0 = -1;
-		all_intRS[i].T1 = -1;
-		all_intRS[i].T2 = -1;
-		all_intRS[i].V0 = 0;
-		all_intRS[i].V1 = 0;
-		all_intRS[i].V2 = 0;
+		//COPY ABOVE
 	}
 fuINT[FU_INT_SIZE];
   //initialize functional units
   for (i = 0; i < FU_INT_SIZE; i++) {
     fuINT[i] = NULL;
+	all_intFU[i].inst = NULL;
+	all_intFU[i].cycles_to_completion = -1;
+	all_intFU[i].rs = -1;
   }
 
   for (i = 0; i < FU_FP_SIZE; i++) {
     fuFP[i] = NULL;
+	all_fpFU[i].inst = NULL;
+	all_fpFU[i].cycles_to_completion = -1;
+	all_fpFU[i].rs = -1;
   }
+
+
 
   //initialize map_table to no producers
   int reg;
@@ -372,6 +492,10 @@ fuINT[FU_INT_SIZE];
     map_table[reg] = NULL;
 	MT[reg] = -1;
   }
+
+	//initialize the cdb
+	cdb.T = -1;
+	cdb.V = -1;
   
   int cycle = 1;
   while (true) {
