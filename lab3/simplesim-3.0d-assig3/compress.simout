@@ -1,0 +1,55 @@
+sim-safe: SimpleScalar/PISA Tool Set version 3.0 of August, 2003.
+Copyright (c) 1994-2003 by Todd M. Austin, Ph.D. and SimpleScalar, LLC.
+All Rights Reserved. This version of SimpleScalar is licensed for academic
+non-commercial use.  No portion of this work may be used by any commercial
+entity, or for any commercial purpose, without the prior written permission
+of SimpleScalar, LLC (info@simplescalar.com).
+
+sim: loading EIO file: /cad2/ece552f/benchmarks/compress.eio
+sim: command line: sim-safe -max:inst 1000000 -redir:sim compress.simout /cad2/ece552f/benchmarks/compress.eio 
+
+sim: simulation started @ Sat Nov  5 19:02:59 2016, options follow:
+
+sim-safe: This simulator implements a functional simulator.  This
+functional simulator is the simplest, most user-friendly simulator in the
+simplescalar tool set.  Unlike sim-fast, this functional simulator checks
+for all instruction errors, and the implementation is crafted for clarity
+rather than speed.
+
+# -config                     # load configuration from a file
+# -dumpconfig                 # dump configuration to a file
+# -h                    false # print help message    
+# -v                    false # verbose operation     
+# -d                    false # enable debug message  
+# -i                    false # start in Dlite debugger
+-seed                       1 # random number generator seed (0 for timer seed)
+# -q                    false # initialize and terminate immediately
+# -chkpt               <null> # restore EIO trace execution from <fname>
+# -redir:sim     compress.simout # redirect simulator output to file (non-interactive only)
+# -redir:prog          <null> # redirect simulated program output to file
+-nice                       0 # simulator scheduling priority
+-max:inst             1000000 # maximum number of inst's to execute
+
+sim: ** starting functional simulation **
+
+sim: ** simulation statistics **
+sim_num_insn                1000000 # total number of instructions executed
+sim_num_refs                 160349 # total number of loads and stores executed
+sim_elapsed_time                  1 # total simulation time in seconds
+sim_inst_rate          1000000.0000 # simulation speed (in insts/sec)
+sim_num_tom_cycles          1593609 # total number of cycles with tomasulo
+ld_text_base             0x00400000 # program text (code) segment base
+ld_text_size                 103840 # program text (code) size in bytes
+ld_data_base             0x10000000 # program initialized data segment base
+ld_data_size               44123012 # program init'ed `.data' and uninit'ed `.bss' size in bytes
+ld_stack_base            0x7fffc000 # program stack segment base (highest address in stack)
+ld_stack_size                 16384 # program initial stack size
+ld_prog_entry            0x00400140 # program entry point (initial PC)
+ld_environ_base          0x7fff8000 # program environment base address address
+ld_target_big_endian              0 # target executable endian-ness, non-zero if big endian
+mem.page_count                   87 # total number of pages allocated
+mem.page_mem                   348k # total size of memory pages allocated
+mem.ptab_misses                  87 # total first level page table misses
+mem.ptab_accesses           4908202 # total page table accesses
+mem.ptab_miss_rate           0.0000 # first level page table miss rate
+

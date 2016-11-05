@@ -29,16 +29,9 @@
 #define RESERV_FP_SIZE     2
 #define FU_INT_SIZE        2
 #define FU_FP_SIZE         1
-//#define RESERV_INT_SIZE    1
-//#define RESERV_FP_SIZE     1
-//#define FU_INT_SIZE        1
-//#define FU_FP_SIZE         1
 
 #define FU_INT_LATENCY     4
 #define FU_FP_LATENCY      9
-
-
-
 
 /* IDENTIFYING INSTRUCTIONS */
 
@@ -64,7 +57,6 @@
 //trap instruction
 #define IS_TRAP(op) (MD_OP_FLAGS(op) & F_TRAP) 
 
-
 #define USES_INT_FU(op) (IS_ICOMP(op) || IS_LOAD(op) || IS_STORE(op))
 #define USES_FP_FU(op) (IS_FCOMP(op))
 
@@ -82,9 +74,21 @@
   myfprintf(out, "reg#%d %s ", reg, str);	\
   md_print_insn(instr->inst, instr->pc, out); \
   myfprintf(stdout, "(%d)\n",instr->index);
-/* ECE552 Assignment 3 - BEGIN CODE */
-/* FUNCTIONAL DECLARATIONS */
 
+/* ECE552 Assignment 3 - BEGIN CODE */
+
+//priority queue
+typedef struct QUEUE_NODE{
+	bool int_rs;
+	int rs_index;
+	struct QUEUE_NODE *next;
+} NODE;
+
+/* FUNCTIONAL DECLARATIONS */
+bool contains(int*, int, int);
+NODE* dequeue(void);
+void dequeue_at(NODE*);
+void enqueue(bool, int);
 
 /* VARIABLES */
 //instruction queue for tomasulo
@@ -97,26 +101,17 @@ int ifq_push_index = 0;
 int ifq_pop_index = 0;
 bool last_fetched;
 
-
 //number of instructions in the instruction queue
 static int instr_queue_count = 0;
 
-//reservation stations (each reservation station entry contains a pointer to an instruction)
-static instruction_t* reservINT[RESERV_INT_SIZE];
-static instruction_t* reservFP[RESERV_FP_SIZE];
-
-//functional units
-static instruction_t* fuINT[FU_INT_SIZE];
-static instruction_t* fuFP[FU_FP_SIZE];
-
-//common data bus
-static instruction_t* commonDataBus = NULL;
-
-//The map table keeps track of which instruction produces the value for each register
-static instruction_t* map_table[MD_TOTAL_REGS];
-
 //the index of the last instruction fetched
 static int fetch_index = 0;
+
+//A linked list keeps track of which instructions entered the RS's first, to ensure
+//that the oldest instructions are given priority
+//Add at tail, pop from head
+NODE* HEAD = NULL;
+
 /* MAP TABLE */
 int MT[MD_TOTAL_REGS];
 
@@ -153,9 +148,9 @@ typedef struct COMMON_DATA_BUS{
 } CDB;
 
 CDB cdb;
-
-
 /* ECE552 Assignment 3 - END CODE */
+
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Checks if simulation is done by finishing the very last instruction
@@ -166,14 +161,15 @@ CDB cdb;
  * 	True: if simulation is finished
  */
 static bool is_simulation_done(counter_t sim_insn) {
+	//Note, the printf's that are commented out were used for debugging purposes
 	//The last instruction needs to have been fetched
 	if(fetch_index < sim_insn){
-		printf("not last fetched %d, %d\n",fetch_index,sim_insn);
+		//printf("not last fetched %d, %d\n",fetch_index,sim_insn);
 		return false;
 	}
 	//IFQ needs to be empty
 	if(ifq_pop_index != ifq_push_index){
-		printf("ifq not empty\n");
+		//printf("ifq not empty\n");
 		return false;
 	}
 	//Checks to make sure the RS and FU's are empty
@@ -181,7 +177,7 @@ static bool is_simulation_done(counter_t sim_insn) {
 	for(i = 0; i < RESERV_INT_SIZE; i++){
 		if(all_intRS[i].busy == true || all_intRS[i].executing == true){
 			if(all_intRS[i].executing){
-				printf("int rs executing\n");
+				//printf("int rs executing\n");
 			}			
 			else if(all_intRS[i].busy){
 				//printf("int rs busy\n");
@@ -192,18 +188,20 @@ static bool is_simulation_done(counter_t sim_insn) {
 	}
 	for(i = 0; i < RESERV_FP_SIZE; i++){
 		if(all_fpRS[i].busy == true || all_fpRS[i].executing == true){
-			printf("fp rs busy or executing\n");
+			//printf("fp rs busy or executing\n");
 			return false;
 		}
 	}
 	//Checks to make sure the CDB is also empty
 	if(cdb.T != -1){
-		printf("cdb not empty\n");
+		//printf("cdb not empty\n");
 		return false;
 	}
   return true;
 }
+/* ECE552 Assignment 3 - END CODE */
 
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Retires the instruction from writing to the Common Data Bus
@@ -213,6 +211,7 @@ static bool is_simulation_done(counter_t sim_insn) {
  * 	None
  */
 void CDB_To_retire(int current_cycle) {
+	//Count how many cycles an instruction has been waiting inside the CDB
 	if(cdb.inst != NULL){
 		cdb.inst->tom_cdb_cycle ++;
 	}
@@ -229,6 +228,7 @@ void CDB_To_retire(int current_cycle) {
 			all_intRS[j].T2 = -1;
 		} 
 	}
+	//Broadcast the result to the fp reservation stations
 	for(j = 0; j < RESERV_FP_SIZE; j++){
 		if(all_fpRS[j].T0 == cdb.T){
 			all_fpRS[j].T0 = -1;
@@ -251,8 +251,9 @@ void CDB_To_retire(int current_cycle) {
 	cdb.inst = NULL;
 	return;
 }
+/* ECE552 Assignment 3 - END CODE */
 
-
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Moves an instruction from the execution stage to common data bus (if possible)
@@ -263,44 +264,102 @@ void CDB_To_retire(int current_cycle) {
  */
 void execute_To_CDB(int current_cycle) {
 	//Check which instructions are done executing
-	int i, rs_number;
-	for(i = 0; (i < FU_INT_SIZE) && (cdb.T == -1); i++){
-		if(all_intFU[i].inst != NULL){
-			all_intFU[i].inst->tom_execute_cycle ++;
-		}
-		if((all_intFU[i].inst != NULL)&&(all_intFU[i].cycles_to_completion == 0)){
-			rs_number = all_intFU[i].rs;
-			if(WRITES_CDB(all_intFU[i].inst->op)){
-				cdb.T = rs_number;
-				cdb.inst = all_intFU[i].inst;
-			}
-			all_intFU[i].inst = NULL;
-			all_intRS[rs_number].instruction = NULL;
-			all_intRS[rs_number].busy = false;
-			all_intRS[rs_number].executing = false;
-			break;
+	NODE* node, *temp;
+	int rs_number;
+	int k;
+	//Increment the counters to indicate that the instruction has been in the FU for another cycle
+	for(k = 0; k < FU_INT_SIZE; k++){
+		if(all_intFU[k].inst != NULL){
+			all_intFU[k].inst->tom_execute_cycle ++;
 		}
 	}
-	for(i = 0; (i < FU_FP_SIZE) && (cdb.T == -1); i++){
-		if(all_fpFU[i].inst != NULL){
-			all_fpFU[i].inst->tom_execute_cycle ++;
-		}	
-		if((all_fpFU[i].inst != NULL)&&(all_fpFU[i].cycles_to_completion == 0)){
-			rs_number = all_fpFU[i].rs;
-			if(WRITES_CDB(all_fpFU[i].inst->op)){
-				cdb.T = rs_number;
-				cdb.inst = all_fpFU[i].inst;
-			}
-			all_fpFU[i].inst = NULL;
-			all_fpRS[rs_number].instruction = NULL;
-			all_fpRS[rs_number].busy = false;
-			all_fpRS[rs_number].executing = false;
-			break;
+	for(k = 0; k < FU_FP_SIZE; k++){
+		if(all_fpFU[k].inst != NULL){
+			all_fpFU[k].inst->tom_execute_cycle ++;
 		}
+	}
+	//Find the next instruction that has finished executing based on age
+	for(node = HEAD; (node != NULL); node = node->next){
+		int j = node->rs_index, i;
+		if(node->int_rs){	
+			//Find the corresponding index in the functional unit
+			if(all_intRS[j].executing){
+				for(i = 0; i < FU_INT_SIZE; i++){
+					if(all_intFU[i].rs == j){
+						break;
+					}
+				}
+			} else{
+				continue;
+			}
+			//Check to see if it is done executing in the FU
+			if((all_intFU[i].inst != NULL)&&(all_intFU[i].cycles_to_completion == 0)){
+				rs_number = all_intFU[i].rs;
+				//Check if the instruction writes to the CDB
+				if(WRITES_CDB(all_intFU[i].inst->op)){
+					//And if the CDB is free
+					if(cdb.T == -1){
+						cdb.T = rs_number;
+						cdb.inst = all_intFU[i].inst;
+						all_intFU[i].inst = NULL;
+						all_intRS[rs_number].instruction = NULL;
+						all_intRS[rs_number].busy = false;
+						all_intRS[rs_number].executing = false;
+						dequeue_at(node);
+					} else {
+						continue;
+					}
+				} else {
+					//Stores do not write to the CDB, so no need to wait for it to be free
+					all_intFU[i].inst = NULL;
+					all_intRS[rs_number].instruction = NULL;
+					all_intRS[rs_number].busy = false;
+					all_intRS[rs_number].executing = false;
+					dequeue_at(node);
+				}
+			}		
+		} else {
+			//Find the corresponding index in the functional unit
+			if(all_fpRS[j].executing){
+				for(i = 0; i < FU_FP_SIZE; i++){
+					if(all_fpFU[i].rs == j){
+						break;
+					}
+				}
+			} else{
+				continue;
+			}
+			//Check to see if it is done executing in the FU
+			if((all_fpFU[i].inst != NULL)&&(all_fpFU[i].cycles_to_completion == 0)){
+				rs_number = all_fpFU[i].rs;	
+				//Check if the instruction writes to the CDB
+				if(WRITES_CDB(all_fpFU[i].inst->op)){
+					//And if the CDB is free
+					if(cdb.T == -1){
+						cdb.T = rs_number;
+						cdb.inst = all_fpFU[i].inst;
+						all_fpFU[i].inst = NULL;
+						all_fpRS[rs_number].instruction = NULL;
+						all_fpRS[rs_number].busy = false;
+						all_fpRS[rs_number].executing = false;
+						dequeue_at(node);
+					} else {
+						continue;
+					}
+				} else {
+					//Stores do not write to the CDB, so no need to wait for it to be free
+					all_fpFU[i].inst = NULL;
+					all_fpRS[rs_number].instruction = NULL;
+					all_fpRS[rs_number].busy = false;
+					all_fpRS[rs_number].executing = false;
+					dequeue_at(node);
+				}
+			}
+		}		
 	}
 
 	//Allow all instructions inside functional units to progress by 1 cycle
-	int new_cyc;
+	int new_cyc, i;
 	for(i = 0; i < FU_INT_SIZE; i++){
 		if(all_intFU[i].inst == NULL){
 			continue;
@@ -320,7 +379,9 @@ void execute_To_CDB(int current_cycle) {
 		}
 	}
 }
+/* ECE552 Assignment 3 - END CODE */
 
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Moves instruction(s) from the issue to the execute stage (if possible). We prioritize old instructions
@@ -332,71 +393,78 @@ void execute_To_CDB(int current_cycle) {
  * 	None
  */
 void issue_To_execute(int current_cycle) {
-	//See which instructions from the RS are ready to be executed
-	int i;
-	int program_order[RESERV_FP_SIZE];
-	int real_program_order[RESERV_FP_SIZE];
-	for(i = 0; i < RESERV_INT_SIZE; i++){
-		//Check if instruction is already in the functional unit
-		if(all_intRS[i].executing){			
-			continue;
-		}
-		
-		if(all_intRS[i].instruction!=NULL){
-			all_intRS[i].instruction->tom_issue_cycle ++;
-		}
-		//Check if an instruction in the RS is ready to be moved to execution
-		if((all_intRS[i].instruction!=NULL)&&(all_intRS[i].T0 == -1)&&(all_intRS[i].T1 == -1)&&(all_intRS[i].T2 == -1)){
-			//Check if there is room in the functional unit
-			int j;
-			bool full = true;
-			for(j = 0; j < FU_INT_SIZE; j++){
-				if(all_intFU[j].inst == NULL){
-					full = false;
-					break;
-				}
-			}	
-			//If there is room in the functional unit
-			if(!full){
-				//Move the instruction to execution
-				all_intFU[j].inst = all_intRS[i].instruction;
-				all_intFU[j].cycles_to_completion = FU_INT_LATENCY - 1;
-				all_intFU[j].rs = i;
-				all_intRS[i].executing = true;
+	NODE* node;
+	bool int_rs;
+	int rs_number;
+	//Find the next instruction that has finished executing based on the age queue
+	for(node = HEAD; (node != NULL); node = node->next){
+		int_rs = node->int_rs;
+		rs_number = node->rs_index;
+		if(int_rs){
+			//If the instruction is already in the FU, continue
+			if(all_intRS[rs_number].executing){
+				continue;
+			}
+			//Increment the count for how long the instruction has been inside the RS
+			if(all_intRS[rs_number].instruction!=NULL){
+				all_intRS[rs_number].instruction->tom_issue_cycle ++;
+			}
+			//Check if an instruction in the RS is ready to be moved to execution
+			if((all_intRS[rs_number].instruction!=NULL)&&(all_intRS[rs_number].T0 == -1)&&(all_intRS[rs_number].T1 == -1)&&(all_intRS[rs_number].T2 == -1)){
+				//Check if there is room in the functional unit
+				int j;
+				bool full = true;
+				for(j = 0; j < FU_INT_SIZE; j++){
+					if(all_intFU[j].inst == NULL){
+						full = false;
+						break;
+					}
+				}	
+				//If there is room in the functional unit
+				if(!full){
+					//Move the instruction to execution
+					all_intFU[j].inst = all_intRS[rs_number].instruction;
+					all_intFU[j].cycles_to_completion = FU_INT_LATENCY - 1;
+					all_intFU[j].rs = rs_number;
+					all_intRS[rs_number].executing = true;
 				
-			}
-		}
-	}
-	//HERE AND CDB ARE WHERE WE NEED TO MAINTAIN PROGRAM ORDER (OLDEST FIRST)
-	//HAVE AN EXTERNAL QUEUE OF POINTERS THAT'LL MAINTAIN AGE ORDER
-	//Perform the same for the floating point instructions
-	for(i = 0; i < RESERV_FP_SIZE; i++){
-		//Check if instruction is already in the functional unit
-		if(all_fpRS[i].executing){			
-			continue;
-		}
-		//Check if an instruction in the RS is ready to be moved to execution
-		if((all_fpRS[i].instruction!=NULL)&&(all_fpRS[i].T0 == -1)&&(all_fpRS[i].T1 == -1)&&(all_fpRS[i].T2 == -1)){
-			//Check if there is room in the functional unit
-			int j;
-			bool full = true;
-			for(j = 0; j < FU_FP_SIZE; j++){
-				if(all_fpFU[j].inst == NULL){
-					full = false;
-					break;
 				}
-			}	
-			//If there is room in the functional unit
-			if(!full){
-				//Move the instruction to execution
-				all_fpFU[j].inst = all_fpRS[i].instruction;
-				all_fpFU[j].cycles_to_completion = FU_FP_LATENCY - 1;
-				all_fpFU[j].rs = i;
-				all_fpRS[i].executing = true;
+			}
+		} else {
+			//If the instruction is already in the FU, continue
+			if(all_fpRS[rs_number].executing){
+				continue;
+			}
+			//Increment the count for how long the instruction has been inside the RS
+			if(all_fpRS[rs_number].instruction!=NULL){
+				all_fpRS[rs_number].instruction->tom_issue_cycle ++;
+			}
+			//Check if an instruction in the RS is ready to be moved to execution
+			if((all_fpRS[rs_number].instruction!=NULL)&&(all_fpRS[rs_number].T0 == -1)&&(all_fpRS[rs_number].T1 == -1)&&(all_fpRS[rs_number].T2 == -1)){
+				//Check if there is room in the functional unit
+				int j;
+				bool full = true;
+				for(j = 0; j < FU_FP_SIZE; j++){
+					if(all_fpFU[j].inst == NULL){
+						full = false;
+						break;
+					}
+				}	
+				//If there is room in the functional unit
+				if(!full){
+					//Move the instruction to execution
+					all_fpFU[j].inst = all_fpRS[rs_number].instruction;
+					all_fpFU[j].cycles_to_completion = FU_FP_LATENCY - 1;
+					all_fpFU[j].rs = rs_number;
+					all_fpRS[rs_number].executing = true;
+				
+				}
 			}
 		}
 	}
+
 }
+/* ECE552 Assignment 3 - END CODE */
 
 /* ECE552 Assignment 3 - BEGIN CODE */
 /* 
@@ -434,6 +502,7 @@ void dispatch_To_issue(int current_cycle) {
 		for(i = 0; i < RESERV_INT_SIZE; i++){
 			if(all_intRS[i].busy == false){
 				//If there is room in the RS, allocate
+				enqueue(true, i);
 				all_intRS[i].busy = true;
 				all_intRS[i].instruction = dispatched_insn;
 				all_intRS[i].instantiation_cycle = current_cycle;
@@ -470,7 +539,6 @@ void dispatch_To_issue(int current_cycle) {
 					all_intRS[i].T2 = -1;
 				}
 						
-
 				//Update the output registers in the map table
 				if(!IS_STORE(dispatched_insn->op)){
 					if((dispatched_insn->r_out)[0] != -1){
@@ -492,6 +560,7 @@ void dispatch_To_issue(int current_cycle) {
 		for(i = 0; i < RESERV_FP_SIZE; i++){
 			if(all_fpRS[i].busy == false){
 				//If there is room in the RS, allocate
+				enqueue(false,i);
 				all_fpRS[i].busy = true;
 				all_fpRS[i].instruction = dispatched_insn;
 				all_fpRS[i].instantiation_cycle = current_cycle;
@@ -543,8 +612,8 @@ void dispatch_To_issue(int current_cycle) {
 				break;
 			}
 		}
-	} else{
-
+	} else {
+		//Do nothing otherwise
 	}
 
 	//Remove the instruction from the IFQ if it was successfully moved into the RS
@@ -571,12 +640,6 @@ void fetch(instruction_trace_t* trace) {
 	//Make sure we fetch until we get a non-trap instruction, as required
 	do{
 		fetched_insn = get_instr(trace, ++fetch_index);
-		
-		//printf("Fetched insn's op: %s\n",fetched_insn->inst);
-	/*	if(fetched_insn == NULL){
-			last_fetched = true;
-			return;
-		}*/
 	} while(IS_TRAP(fetched_insn->op));
 	//Pre-increment the fetch index because it is the index of the last 
 	//fetched instruction, and add it to the IFQ
@@ -600,7 +663,6 @@ void fetch(instruction_trace_t* trace) {
  * Returns:
  * 	None
  */
-
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 	//First check if there is room in the IFQ
 	if(((ifq_push_index+1)%(INSTR_QUEUE_SIZE + 1))!=ifq_pop_index){
@@ -610,7 +672,7 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 }
 /* ECE552 Assignment 3 - END CODE */
 
-
+/* ECE552 Assignment 3 - BEGIN CODE */
 /* 
  * Description: 
  * 	Performs a cycle-by-cycle simulation of the 4-stage pipeline
@@ -624,20 +686,12 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 counter_t runTomasulo(instruction_trace_t* trace)
 {
   //initialize instruction queue
-  int i;
-  for (i = 0; i < INSTR_QUEUE_SIZE; i++) {
-    instr_queue[i] = NULL;
-  }
+	int i;
+	for (i = 0; i < INSTR_QUEUE_SIZE; i++) {
+		instr_queue[i] = NULL;
+	}
 
   //initialize reservation stations
-  for (i = 0; i < RESERV_INT_SIZE; i++) {
-      reservINT[i] = NULL;
-  }
-
-  for(i = 0; i < RESERV_FP_SIZE; i++) {
-      reservFP[i] = NULL;
-  }
-
 	for(i = 0; i < RESERV_INT_SIZE; i++){
 		all_intRS[i].busy = false;
 		all_intRS[i].executing = false;
@@ -663,25 +717,19 @@ counter_t runTomasulo(instruction_trace_t* trace)
 
   //initialize functional units
   for (i = 0; i < FU_INT_SIZE; i++) {
-    fuINT[i] = NULL;
 	all_intFU[i].inst = NULL;
 	all_intFU[i].cycles_to_completion = -1;
 	all_intFU[i].rs = -1;
   }
-
   for (i = 0; i < FU_FP_SIZE; i++) {
-    fuFP[i] = NULL;
 	all_fpFU[i].inst = NULL;
 	all_fpFU[i].cycles_to_completion = -1;
 	all_fpFU[i].rs = -1;
   }
 
-
-
-  //initialize map_table to no producers
+  //initialize map_table to indicate no registers will be written to by future RS's
   int reg;
   for (reg = 0; reg < MD_TOTAL_REGS; reg++) {
-    map_table[reg] = NULL;
 	MT[reg] = -1;
   }
 
@@ -706,3 +754,57 @@ counter_t runTomasulo(instruction_trace_t* trace)
   
   return cycle;
 }
+/* ECE552 Assignment 3 - END CODE */
+
+/* ECE552 Assignment 3 - BEGIN CODE */
+// Additional functions that helped in the development of this program
+// Checks if an array contains a certain value
+bool contains(int* array, int size, int value){
+	int i;
+	for(i = 0; i < size; i++){
+		if(array[i] == value){
+			return true;
+		}
+	}
+	return false;
+}
+// Enqueue a new quantity at the tail of a linked list
+void enqueue(bool int_rs, int rs_index){
+	NODE* node = (NODE*)malloc(sizeof(NODE));
+	node -> int_rs = int_rs;
+	node -> rs_index = rs_index;
+	node -> next = NULL;
+
+	NODE* ptr;
+	if(HEAD == NULL){
+		HEAD = node;
+		return;
+	}
+	for(ptr = HEAD; ptr->next != NULL; ptr = ptr->next){}
+	ptr->next = node;
+}
+// Remove the head from the linked list
+NODE* dequeue(void){
+	NODE* node = HEAD;
+	if(HEAD == NULL){
+		return NULL;
+	}
+	HEAD = HEAD->next;
+	return node;
+}
+// Remove and deallocate a node at a specified index from the linked list
+void dequeue_at(NODE* target){
+	NODE* node;
+	if(HEAD == NULL){
+		return;
+	}
+	if(HEAD == target){
+		free(dequeue());
+		return;
+	}
+	for(node = HEAD; (node->next)!=target; node = node->next){}
+	node->next = target -> next;
+	free(target);
+	return;
+}
+/* ECE552 Assignment 3 - END CODE */
