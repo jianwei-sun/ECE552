@@ -29,9 +29,16 @@
 #define RESERV_FP_SIZE     2
 #define FU_INT_SIZE        2
 #define FU_FP_SIZE         1
+//#define RESERV_INT_SIZE    1
+//#define RESERV_FP_SIZE     1
+//#define FU_INT_SIZE        1
+//#define FU_FP_SIZE         1
 
 #define FU_INT_LATENCY     4
 #define FU_FP_LATENCY      9
+
+
+
 
 /* IDENTIFYING INSTRUCTIONS */
 
@@ -56,6 +63,7 @@
 
 //trap instruction
 #define IS_TRAP(op) (MD_OP_FLAGS(op) & F_TRAP) 
+
 
 #define USES_INT_FU(op) (IS_ICOMP(op) || IS_LOAD(op) || IS_STORE(op))
 #define USES_FP_FU(op) (IS_FCOMP(op))
@@ -87,7 +95,7 @@ static instruction_t* instr_queue[INSTR_QUEUE_SIZE + 1];
 //push index 1 before pop index means queue is full
 int ifq_push_index = 0;
 int ifq_pop_index = 0;
-
+bool last_fetched;
 
 
 //number of instructions in the instruction queue
@@ -124,7 +132,6 @@ FU all_fpFU[FU_FP_SIZE];
 
 /* RESERVATION STATIONS */
 typedef struct RESERVATION_STATION{
-	instruction_t** FU;
 	bool busy;
 	bool executing;
 	instruction_t* instruction;
@@ -133,18 +140,15 @@ typedef struct RESERVATION_STATION{
 	int T0;
 	int T1;
 	int T2;
-	UINT32 V0;
-	UINT32 V1;
-	UINT32 V2;
-} RS;
+} ResSta;
 
-RS all_intRS[RESERV_INT_SIZE];
-RS all_fpRS[RESERV_FP_SIZE];
+ResSta all_intRS[RESERV_INT_SIZE];
+ResSta all_fpRS[RESERV_FP_SIZE];
 
 /* CDB */
 typedef struct COMMON_DATA_BUS{
+	instruction_t* inst;
 	int T;
-	UINT32 V;
 } CDB;
 
 CDB cdb;
@@ -161,10 +165,42 @@ CDB cdb;
  * 	True: if simulation is finished
  */
 static bool is_simulation_done(counter_t sim_insn) {
+	//The last instruction needs to have been fetched
+	if(fetch_index < sim_insn){
+		printf("not last fetched %d, %d\n",fetch_index,sim_insn);
+		return false;
+	}
+	//IFQ needs to be empty
+	if(ifq_pop_index != ifq_push_index){
+		printf("ifq not empty\n");
+		return false;
+	}
+	//Checks to make sure the RS and FU's are empty
+  	int i;
+	for(i = 0; i < RESERV_INT_SIZE; i++){
+		if(all_intRS[i].busy == true || all_intRS[i].executing == true){
+			if(all_intRS[i].executing){
+				printf("int rs executing\n");
+			}			
+			else if(all_intRS[i].busy){
+				//printf("int rs busy\n");
+			}
 
-  /* ECE552: YOUR CODE GOES HERE */
-
-  return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
+			return false;
+		}
+	}
+	for(i = 0; i < RESERV_FP_SIZE; i++){
+		if(all_fpRS[i].busy == true || all_fpRS[i].executing == true){
+			printf("fp rs busy or executing\n");
+			return false;
+		}
+	}
+	//Checks to make sure the CDB is also empty
+	if(cdb.T != -1){
+		printf("cdb not empty\n");
+		return false;
+	}
+  return true;
 }
 
 /* 
@@ -176,9 +212,43 @@ static bool is_simulation_done(counter_t sim_insn) {
  * 	None
  */
 void CDB_To_retire(int current_cycle) {
-
-  /* ECE552: YOUR CODE GOES HERE */
-
+	if(cdb.inst != NULL){
+		cdb.inst->tom_cdb_cycle ++;
+	}
+	int j;
+	//Broadcast the result to the reservation stations
+	for(j = 0; j < RESERV_INT_SIZE; j++){
+		if(all_intRS[j].T0 == cdb.T){
+			all_intRS[j].T0 = -1;
+		}
+		if(all_intRS[j].T1 == cdb.T){
+			all_intRS[j].T1 = -1;
+		}
+		if(all_intRS[j].T2 == cdb.T){
+			all_intRS[j].T2 = -1;
+		} 
+	}
+	for(j = 0; j < RESERV_FP_SIZE; j++){
+		if(all_fpRS[j].T0 == cdb.T){
+			all_fpRS[j].T0 = -1;
+		}
+		if(all_fpRS[j].T1 == cdb.T){
+			all_fpRS[j].T1 = -1;
+		}
+		if(all_fpRS[j].T2 == cdb.T){
+			all_fpRS[j].T2 = -1;
+		} 
+	}
+	//Clear the map table to indicate writeback to the register file has occured
+	for(j = 0; j < MD_TOTAL_REGS; j++){
+		if(MT[j] == cdb.T){
+			MT[j] = -1;
+		}
+	}
+	//Clear the CDB
+	cdb.T = -1;
+	cdb.inst = NULL;
+	return;
 }
 
 
@@ -192,53 +262,44 @@ void CDB_To_retire(int current_cycle) {
  */
 void execute_To_CDB(int current_cycle) {
 	//Check which instructions are done executing
-	int i;
-	for(i = 0; (i < FU_INT_SIZE) && (cdb.T == -1); i++){	
-		if((all_intFU[i].cycles_to_completion == 0)){
+	int i, rs_number;
+	for(i = 0; (i < FU_INT_SIZE) && (cdb.T == -1); i++){
+		if(all_intFU[i].inst != NULL){
+			all_intFU[i].inst->tom_execute_cycle ++;
+		}
+		if((all_intFU[i].inst != NULL)&&(all_intFU[i].cycles_to_completion == 0)){
 			rs_number = all_intFU[i].rs;
-			cdb.T = rs_number;
+			if(WRITES_CDB(all_intFU[i].inst->op)){
+				cdb.T = rs_number;
+				cdb.inst = all_intFU[i].inst;
+			}
 			all_intFU[i].inst = NULL;
+			all_intRS[rs_number].instruction = NULL;
 			all_intRS[rs_number].busy = false;
 			all_intRS[rs_number].executing = false;
-			int j;
-			for(j = 0; j < RESERV_INT_SIZE; j++){
-				if(all_intRS[j].T0 == rs_number){
-					all_intRS[j].T0 = -1;
-				}
-				if(all_intRS[j].T1 == rs_number){
-					all_intRS[j].T1 = -1;
-				}
-				if(all_intRS[j].T2 == rs_number){
-					all_intRS[j].T2 = -1;
-				} 
-			}
 			break;
 		}
 	}
-	for(i = 0; (i < FU_FP_SIZE) && (cdb.T == -1); i++){	
-		if((all_fpFU[i].cycles_to_completion == 0)){
+	for(i = 0; (i < FU_FP_SIZE) && (cdb.T == -1); i++){
+		if(all_fpFU[i].inst != NULL){
+			all_fpFU[i].inst->tom_execute_cycle ++;
+		}	
+		if((all_fpFU[i].inst != NULL)&&(all_fpFU[i].cycles_to_completion == 0)){
 			rs_number = all_fpFU[i].rs;
-			cdb.T = rs_number;
+			if(WRITES_CDB(all_fpFU[i].inst->op)){
+				cdb.T = rs_number;
+				cdb.inst = all_fpFU[i].inst;
+			}
 			all_fpFU[i].inst = NULL;
+			all_fpRS[rs_number].instruction = NULL;
 			all_fpRS[rs_number].busy = false;
 			all_fpRS[rs_number].executing = false;
-			int j;
-			for(j = 0; j < RESERV_FP_SIZE; j++){
-				if(all_fpRS[j].T0 == rs_number){
-					all_fpRS[j].T0 = -1;
-				}
-				if(all_fpRS[j].T1 == rs_number){
-					all_fpRS[j].T1 = -1;
-				}
-				if(all_fpRS[j].T2 == rs_number){
-					all_fpRS[j].T2 = -1;
-				} 
-			}
 			break;
 		}
 	}
 
 	//Allow all instructions inside functional units to progress by 1 cycle
+	int new_cyc;
 	for(i = 0; i < FU_INT_SIZE; i++){
 		if(all_intFU[i].inst == NULL){
 			continue;
@@ -246,6 +307,15 @@ void execute_To_CDB(int current_cycle) {
 			//Ensure count does not become negative because we could be stalling for a free cdb
 			new_cyc = all_intFU[i].cycles_to_completion - 1;
 			all_intFU[i].cycles_to_completion = new_cyc < 0 ? 0 : new_cyc;
+		}
+	}
+	for(i = 0; i < FU_FP_SIZE; i++){
+		if(all_fpFU[i].inst == NULL){
+			continue;
+		} else {
+			//Ensure count does not become negative because we could be stalling for a free cdb
+			new_cyc = all_fpFU[i].cycles_to_completion - 1;
+			all_fpFU[i].cycles_to_completion = new_cyc < 0 ? 0 : new_cyc;
 		}
 	}
 }
@@ -268,8 +338,12 @@ void issue_To_execute(int current_cycle) {
 		if(all_intRS[i].executing){			
 			continue;
 		}
+		
+		if(all_intRS[i].instruction!=NULL){
+			all_intRS[i].instruction->tom_issue_cycle ++;
+		}
 		//Check if an instruction in the RS is ready to be moved to execution
-		if((all_intRS[i].T0 == -1)&&(all_intRS[i].T1 == -1)&&(all_intRS[i].T2 == -1)){
+		if((all_intRS[i].instruction!=NULL)&&(all_intRS[i].T0 == -1)&&(all_intRS[i].T1 == -1)&&(all_intRS[i].T2 == -1)){
 			//Check if there is room in the functional unit
 			int j;
 			bool full = true;
@@ -283,8 +357,10 @@ void issue_To_execute(int current_cycle) {
 			if(!full){
 				//Move the instruction to execution
 				all_intFU[j].inst = all_intRS[i].instruction;
-				all_intFU[j].cycles_to_completion = FU_INT_LATENCY;
+				all_intFU[j].cycles_to_completion = FU_INT_LATENCY - 1;
+				all_intFU[j].rs = i;
 				all_intRS[i].executing = true;
+				
 			}
 		}
 	}
@@ -295,7 +371,7 @@ void issue_To_execute(int current_cycle) {
 			continue;
 		}
 		//Check if an instruction in the RS is ready to be moved to execution
-		if((all_fpRS[i].T0 == -1)&&(all_fpRS[i].T1 == -1)&&(all_fpRS[i].T2 == -1)){
+		if((all_fpRS[i].instruction!=NULL)&&(all_fpRS[i].T0 == -1)&&(all_fpRS[i].T1 == -1)&&(all_fpRS[i].T2 == -1)){
 			//Check if there is room in the functional unit
 			int j;
 			bool full = true;
@@ -309,7 +385,8 @@ void issue_To_execute(int current_cycle) {
 			if(!full){
 				//Move the instruction to execution
 				all_fpFU[j].inst = all_fpRS[i].instruction;
-				all_fpFU[j].cycles_to_completion = FU_FP_LATENCY;
+				all_fpFU[j].cycles_to_completion = FU_FP_LATENCY - 1;
+				all_fpFU[j].rs = i;
 				all_fpRS[i].executing = true;
 			}
 		}
@@ -336,9 +413,17 @@ void dispatch_To_issue(int current_cycle) {
 	} else {
 		return;
 	}
-		
+	dispatched_insn -> tom_dispatch_cycle ++;
+	//If instruction is a branch, we just remove it from the IRQ
+	//since we assume perfect branch prediction
+	if(IS_UNCOND_CTRL(dispatched_insn->op)||IS_COND_CTRL(dispatched_insn->op)){
+		ifq_pop_index = (ifq_pop_index + 1) % (INSTR_QUEUE_SIZE + 1);
+		instr_queue_count--;
+		return;
+	}
+	
 	//Check if the instruction uses an integer functional unit
-	if(USES_INT_FU(dispatched_insn)){
+	if(USES_INT_FU(dispatched_insn->op)){
 		//Check the 4 integer RS's for their busy bit
 		int i;
 		for(i = 0; i < RESERV_INT_SIZE; i++){
@@ -348,30 +433,116 @@ void dispatch_To_issue(int current_cycle) {
 				all_intRS[i].instruction = dispatched_insn;
 				//For input registers, check if they are waiting on other RS's
 				//If not, then get the value from the physical registers
-				if(MT[(dispatched_insn -> r_in)[0]] == -1){
-					all_intRS[i].T0 = -1;			
-					all_intRS[i].V0 = //NEED TO GET VALUE FROM REGISTER MAP
+				//First input register
+				if((dispatched_insn->r_in)[0] != -1){
+					if(MT[(dispatched_insn -> r_in)[0]] == -1){
+						all_intRS[i].T0 = -1;			
+					} else {
+						all_intRS[i].T0 = MT[(dispatched_insn -> r_in)[0]];
+					}
 				} else {
-					all_intRS[i].T0 = MT[(dispatched_insn -> r_in)[0]];
+					all_intRS[i].T0 = -1;
 				}
+				//Second input register
+				if((dispatched_insn->r_in)[1] != -1){
+					if(MT[(dispatched_insn -> r_in)[1]] == -1){
+						all_intRS[i].T1 = -1;			
+					} else {
+						all_intRS[i].T1 = MT[(dispatched_insn -> r_in)[1]];
+					}
+				} else {
+					all_intRS[i].T1 = -1;
+				}
+				//Third input register
+				if((dispatched_insn->r_in)[2] != -1){
+					if(MT[(dispatched_insn -> r_in)[2]] == -1){
+						all_intRS[i].T2 = -1;			
+					} else {
+						all_intRS[i].T2 = MT[(dispatched_insn -> r_in)[2]];
+					}
+				} else {
+					all_intRS[i].T2 = -1;
+				}
+						
 
 				//Update the output registers in the map table
-				all_intRS[i].R0 = (dispatched_insn -> r_out)[0];
-				all_intRS[i].R1 = (dispatched_insn -> r_out)[1];
-				MT[(dispatched_insn -> r_out)[0]] = i;
-				MT[(dispatched_insn -> r_out)[1]] = i;
+				if(!IS_STORE(dispatched_insn->op)){
+					if((dispatched_insn->r_out)[0] != -1){
+						all_intRS[i].R0 = (dispatched_insn -> r_out)[0];
+						MT[(dispatched_insn -> r_out)[0]] = i;
+					}
+					if((dispatched_insn->r_out)[1] != -1){
+						all_intRS[i].R1 = (dispatched_insn -> r_out)[1];
+						MT[(dispatched_insn -> r_out)[1]] = i;
+					}
+				}
 				RS_has_room = true;
 				break;
 			}
 		}
-	} else if(USES_FP_FU(dispatched_insn)){
-		
+	} else if(USES_FP_FU(dispatched_insn->op)){
+		//Check the fp RS's for their busy bit
+		int i;
+		for(i = 0; i < RESERV_FP_SIZE; i++){
+			if(all_fpRS[i].busy == false){
+				//If there is room in the RS, allocate
+				all_fpRS[i].busy = true;
+				all_fpRS[i].instruction = dispatched_insn;
+				//For input registers, check if they are waiting on other RS's
+				//If not, then get the value from the physical registers
+				//First input register
+				if((dispatched_insn->r_in)[0] != -1){
+					if(MT[(dispatched_insn -> r_in)[0]] == -1){
+						all_fpRS[i].T0 = -1;			
+					} else {
+						all_fpRS[i].T0 = MT[(dispatched_insn -> r_in)[0]];
+					}
+				} else {
+					all_fpRS[i].T0 = -1;
+				}
+				//Second input register
+				if((dispatched_insn->r_in)[1] != -1){
+					if(MT[(dispatched_insn -> r_in)[1]] == -1){
+						all_fpRS[i].T1 = -1;			
+					} else {
+						all_fpRS[i].T1 = MT[(dispatched_insn -> r_in)[1]];
+					}
+				} else {
+					all_fpRS[i].T1 = -1;
+				}
+				//Third input register
+				if((dispatched_insn->r_in)[2] != -1){
+					if(MT[(dispatched_insn -> r_in)[2]] == -1){
+						all_fpRS[i].T2 = -1;			
+					} else {
+						all_fpRS[i].T2 = MT[(dispatched_insn -> r_in)[2]];
+					}
+				} else {
+					all_fpRS[i].T2 = -1;
+				}
+
+				//Update the output registers in the map table
+				if(!IS_STORE(dispatched_insn->op)){
+					if((dispatched_insn->r_out)[0] != -1){
+						all_fpRS[i].R0 = (dispatched_insn -> r_out)[0];
+						MT[(dispatched_insn -> r_out)[0]] = i;
+					}
+					if((dispatched_insn->r_out)[1] != -1){
+						all_fpRS[i].R1 = (dispatched_insn -> r_out)[1];
+						MT[(dispatched_insn -> r_out)[1]] = i;
+					}
+				}
+				RS_has_room = true;
+				break;
+			}
+		}
 	} else{
 
 	}
 
 	//Remove the instruction from the IFQ if it was successfully moved into the RS
 	if(RS_has_room){
+		
 		ifq_pop_index = (ifq_pop_index + 1) % (INSTR_QUEUE_SIZE + 1);
 		instr_queue_count--;
 	}
@@ -393,12 +564,21 @@ void fetch(instruction_trace_t* trace) {
 	//Make sure we fetch until we get a non-trap instruction, as required
 	do{
 		fetched_insn = get_instr(trace, ++fetch_index);
-	} while(IS_TRAP(fetched_insn));
+		
+		//printf("Fetched insn's op: %s\n",fetched_insn->inst);
+	/*	if(fetched_insn == NULL){
+			last_fetched = true;
+			return;
+		}*/
+	} while(IS_TRAP(fetched_insn->op));
 	//Pre-increment the fetch index because it is the index of the last 
 	//fetched instruction, and add it to the IFQ
-	instr_queue[ifq_push_index] = fetched_insn;
-	ifq_push_index = (ifq_push_index + 1) % (INSTR_QUEUE_SIZE + 1);
-	instr_queue_count++;
+	//If we're at our limit of instructions, then don't add the instruction to the IFQ
+	if(fetch_index <= sim_num_insn){
+		instr_queue[ifq_push_index] = fetched_insn;
+		ifq_push_index = (ifq_push_index + 1) % (INSTR_QUEUE_SIZE + 1);
+		instr_queue_count++;
+	}
   	return;
 }
 /* ECE552 Assignment 3 - END CODE */
@@ -418,8 +598,8 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 	//First check if there is room in the IFQ
 	if(((ifq_push_index+1)%(INSTR_QUEUE_SIZE + 1))!=ifq_pop_index){
 		fetch(trace);
+		
 	}
-
 }
 /* ECE552 Assignment 3 - END CODE */
 
@@ -452,7 +632,6 @@ counter_t runTomasulo(instruction_trace_t* trace)
   }
 
 	for(i = 0; i < RESERV_INT_SIZE; i++){
-		all_intRS[i].FU = (fuINT+i)
 		all_intRS[i].busy = false;
 		all_intRS[i].executing = false;
 		all_intRS[i].instruction = NULL;
@@ -461,14 +640,18 @@ counter_t runTomasulo(instruction_trace_t* trace)
 		all_intRS[i].T0 = -1;
 		all_intRS[i].T1 = -1;
 		all_intRS[i].T2 = -1;
-		all_intRS[i].V0 = 0;
-		all_intRS[i].V1 = 0;
-		all_intRS[i].V2 = 0;
 	}
 	for(i = 0; i < RESERV_FP_SIZE; i++){
-		//COPY ABOVE
+		all_fpRS[i].busy = false;
+		all_fpRS[i].executing = false;
+		all_fpRS[i].instruction = NULL;
+		all_fpRS[i].R0 = -1;
+		all_fpRS[i].R1 = -1;
+		all_fpRS[i].T0 = -1;
+		all_fpRS[i].T1 = -1;
+		all_fpRS[i].T2 = -1;
 	}
-fuINT[FU_INT_SIZE];
+
   //initialize functional units
   for (i = 0; i < FU_INT_SIZE; i++) {
     fuINT[i] = NULL;
@@ -495,15 +678,19 @@ fuINT[FU_INT_SIZE];
 
 	//initialize the cdb
 	cdb.T = -1;
-	cdb.V = -1;
+	cdb.inst = NULL;
   
   int cycle = 1;
   while (true) {
 
-     /* ECE552: YOUR CODE GOES HERE */
+	CDB_To_retire(cycle);
+	execute_To_CDB(cycle);
+	issue_To_execute(cycle);
+	dispatch_To_issue(cycle);
+	fetch_To_dispatch(trace, cycle);
 
      cycle++;
-
+	
      if (is_simulation_done(sim_num_insn))
         break;
   }

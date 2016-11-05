@@ -418,7 +418,7 @@ sim_main(void)
 
     sim_num_tom_cycles = runTomasulo(instruction_trace);
   
-    //print_all_instr(instruction_trace, sim_num_insn);
+    print_all_instr(instruction_trace, sim_num_insn);
 
     free(instruction_trace);
     /* ECE552 END */
