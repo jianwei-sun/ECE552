@@ -140,6 +140,7 @@ typedef struct RESERVATION_STATION{
 	int T0;
 	int T1;
 	int T2;
+	int instantiation_cycle;
 } ResSta;
 
 ResSta all_intRS[RESERV_INT_SIZE];
@@ -333,6 +334,8 @@ void execute_To_CDB(int current_cycle) {
 void issue_To_execute(int current_cycle) {
 	//See which instructions from the RS are ready to be executed
 	int i;
+	int program_order[RESERV_FP_SIZE];
+	int real_program_order[RESERV_FP_SIZE];
 	for(i = 0; i < RESERV_INT_SIZE; i++){
 		//Check if instruction is already in the functional unit
 		if(all_intRS[i].executing){			
@@ -364,6 +367,8 @@ void issue_To_execute(int current_cycle) {
 			}
 		}
 	}
+	//HERE AND CDB ARE WHERE WE NEED TO MAINTAIN PROGRAM ORDER (OLDEST FIRST)
+	//HAVE AN EXTERNAL QUEUE OF POINTERS THAT'LL MAINTAIN AGE ORDER
 	//Perform the same for the floating point instructions
 	for(i = 0; i < RESERV_FP_SIZE; i++){
 		//Check if instruction is already in the functional unit
@@ -431,6 +436,7 @@ void dispatch_To_issue(int current_cycle) {
 				//If there is room in the RS, allocate
 				all_intRS[i].busy = true;
 				all_intRS[i].instruction = dispatched_insn;
+				all_intRS[i].instantiation_cycle = current_cycle;
 				//For input registers, check if they are waiting on other RS's
 				//If not, then get the value from the physical registers
 				//First input register
@@ -488,6 +494,7 @@ void dispatch_To_issue(int current_cycle) {
 				//If there is room in the RS, allocate
 				all_fpRS[i].busy = true;
 				all_fpRS[i].instruction = dispatched_insn;
+				all_fpRS[i].instantiation_cycle = current_cycle;
 				//For input registers, check if they are waiting on other RS's
 				//If not, then get the value from the physical registers
 				//First input register
@@ -640,6 +647,7 @@ counter_t runTomasulo(instruction_trace_t* trace)
 		all_intRS[i].T0 = -1;
 		all_intRS[i].T1 = -1;
 		all_intRS[i].T2 = -1;
+		all_intRS[i].instantiation_cycle = 0;
 	}
 	for(i = 0; i < RESERV_FP_SIZE; i++){
 		all_fpRS[i].busy = false;
@@ -649,7 +657,8 @@ counter_t runTomasulo(instruction_trace_t* trace)
 		all_fpRS[i].R1 = -1;
 		all_fpRS[i].T0 = -1;
 		all_fpRS[i].T1 = -1;
-		all_fpRS[i].T2 = -1;
+		all_fpRS[i].T2 = -1;	
+		all_fpRS[i].instantiation_cycle = 0;
 	}
 
   //initialize functional units
