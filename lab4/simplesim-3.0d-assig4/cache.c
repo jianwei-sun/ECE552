@@ -507,7 +507,13 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
 
 /* Next Line Prefetcher */
 void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+	//We need to get the size information for the cache first
+	md_addr_t block_address = CACHE_BADDR(cp, addr);
+	md_addr_t next_block_address = CACHE_BADDR(cp, addr + cp->bsize);
+	//Check if the address being fetched is already in the cache
+	if(!cache_probe(cp, next_block_address)){
+	//	cache_access(cp, Read, next_block_address, NULL, cp->bsize, 0, NULL, NULL, 1);	
+	}
 }
 
 /* Open Ended Prefetcher */
