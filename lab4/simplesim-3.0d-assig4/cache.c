@@ -600,7 +600,7 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	}
 
 	//Generate the prefetch
-	md_addr_t next_block_address = rpt->stride[pc] + addr;
+	md_addr_t next_block_address = CACHE_BADDR(cp,rpt->stride[pc] + addr);
 	//Predictions are generated for states initial, transient, and steady
 	//and if the next block to fetch is not already inside the cache
 	if((rpt->state[pc] != noprediction)&&!cache_probe(cp, next_block_address)){
