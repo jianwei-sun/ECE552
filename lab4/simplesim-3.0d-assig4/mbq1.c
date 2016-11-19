@@ -9,11 +9,11 @@ int main(void){
 		
 	asm("move	$3,$sp");
 	//asm("move	$3, $0");
-	asm("addu	$5, $sp, 4000000");
+	asm("addu	$5, $sp, 128000000");
 	asm("$L101:	sltu	$2,$3,$5");
 	asm("beq	$2,$0,$L1");
 	asm("lw		$4,0($3)");
-	asm("addu	$3,$3,4");
+	asm("addu	$3,$3,128");
 	asm("j	$L101");
 /*
 	register int i, b;
