@@ -133,6 +133,31 @@ struct cache_blk_t
 				   should probably be a multiple of 8 */
 };
 
+
+
+
+/* ECE552 Assignment 4 - BEGIN CODE*/
+enum rpt_state {
+	initial,
+	transient,
+	steady,
+	noprediction
+};
+
+typedef struct reference_predictor_table{
+	md_addr_t *tag;
+	md_addr_t *prev_addr;
+	md_addr_t *stride;
+	enum rpt_state *state;
+} RPT;
+
+//Function prototype for creating static rpt table
+RPT* create_rpt_table(RPT*, int);
+/* ECE552 Assignment 4 - END CODE*/
+
+
+
+
 /* cache set definition (one or more blocks sharing the same set index) */
 struct cache_set_t
 {

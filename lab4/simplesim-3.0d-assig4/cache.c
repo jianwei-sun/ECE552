@@ -505,6 +505,12 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
 
 }
 
+
+/* ECE552 Assignment 4 - BEGIN CODE*/
+
+//Moved the function prototype for get_PC() higher because we use it in stride
+md_addr_t get_PC();
+
 /* Next Line Prefetcher */
 void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	//We need to get the size information for the cache first
@@ -521,10 +527,93 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	; 
 }
 
+//Function definition for creating a static RPT table
+RPT* create_rpt_table(RPT* rpt, int rpt_size){
+	//If rpt is already created, then just return
+	if(rpt != NULL){
+		return rpt;
+	}
+	//Create a RPT pointer to the table
+	rpt = (RPT*)malloc(sizeof(RPT));
+	//Create the number of entries specified by cp->prefetch type
+	rpt->tag = (md_addr_t*)calloc(rpt_size,sizeof(md_addr_t));
+	rpt->prev_addr = (md_addr_t*)calloc(rpt_size,sizeof(md_addr_t));
+	rpt->stride = (md_addr_t*)calloc(rpt_size,sizeof(md_addr_t));
+	rpt->state = (enum rpt_state*)calloc(rpt_size,sizeof(enum rpt_state));
+	int i;
+	for(i = 0; i < rpt_size; i++){
+		rpt->state[i] = initial;
+	}
+	return rpt;
+}
+
 /* Stride Prefetcher */
 void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+	//Start with an empty table
+	static RPT* rpt = NULL;
+	int rpt_size = cp->prefetch_type;
+	//Create the table if it does not already exist
+	rpt = create_rpt_table(rpt,rpt_size);
+	//Get PC, discard the lowest two zero bits, and create an index
+	md_addr_t pc = (get_PC() >> 2) % rpt_size;
+	md_addr_t stride = addr - rpt->prev_addr[pc];
+	int stride_condition = (stride == rpt->stride[pc]);
+
+	//Update the table
+	rpt->prev_addr[pc] = addr;
+	switch(rpt->state[pc]){
+	case initial: {
+		if(stride_condition){
+			rpt->state[pc] = steady;
+		} else {
+			rpt->state[pc] = transient;
+			rpt->stride[pc] = stride;
+		}
+		break;
+	}
+	case transient: {
+		if(stride_condition){
+			rpt->state[pc] = steady;
+		} else {
+			rpt->state[pc] = noprediction;
+			rpt->stride[pc] = stride;
+		}
+		break;
+	}
+	case steady: {
+		if(stride_condition){
+			rpt->state[pc] = steady;
+		} else {
+			rpt->state[pc] = initial;
+		}
+		break;
+	}
+	case noprediction: {
+		if(stride_condition){
+			rpt->state[pc] = transient;
+		} else {
+			rpt->state[pc] = noprediction;
+			rpt->stride[pc] = stride;
+		}
+		break;
+	}
+	}
+
+	//Generate the prefetch
+	md_addr_t next_block_address = rpt->stride[pc] + addr;
+	//Predictions are generated for states initial, transient, and steady
+	//and if the next block to fetch is not already inside the cache
+	if((rpt->state[pc] != noprediction)&&!cache_probe(cp, next_block_address)){
+		cache_access(cp, Read, next_block_address, NULL, cp->bsize, 0, NULL, NULL, 1);
+	}
+
+	return;
 }
+
+
+
+/* ECE552 Assignment 4 - END CODE*/
+
 
 
 /* cache x might generate a prefetch after a regular cache access to address addr */
@@ -550,7 +639,7 @@ void generate_prefetch(struct cache_t *cp, md_addr_t addr) {
 
 }
 
-md_addr_t get_PC();
+
 
 /* print cache stats */
 void
