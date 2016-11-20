@@ -524,7 +524,75 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 
 /* Open Ended Prefetcher */
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+	static GHB_node *head = NULL;
+	static GHB_node *tail = NULL;
+	static IT_node* index_table[INDEX_TABLE_SIZE];
+	static int initialized = 0;
+	static md_addr_t prev_addr = 0;
+//Create all the tables if they do not already exist
+	if(!initialized){
+		//Create the GHB buffer
+		head = (GHB_node*)calloc(1,sizeof(GHB_node));
+		int i;
+		GHB_node *ptr = head, *new_ptr;
+		for(i = 1; i < GHB_TABLE_SIZE; i++){
+			new_ptr = (GHB_node*)calloc(1,sizeof(GHB_node));
+			ptr->next = new_ptr;
+			new_ptr->prev = ptr;
+			ptr = new_ptr;
+		}
+		tail = ptr;
+		//Create the index table 
+		for(i = 0; i < INDEX_TABLE_SIZE; i++){
+			index_table[i] = (IT_node*)calloc(1,sizeof(IT_node));
+		}
+		//Set initialized flag
+		initialized = 1;
+	}
+//Update the index table entry
+	//Calculate delta
+	md_addr_t delta = addr - prev_addr;
+	//Update previous address
+	prev_addr = addr;
+	md_addr_t index = (get_PC() >> 2) % INDEX_TABLE_SIZE;
+	index_table[index]->old_delta = index_table[index]->new_delta;
+	index_table[index]->new_delta = delta;	
+//Update the GHB buffer
+	//Dequeue
+	tail = tail->prev;
+	free(tail->next);
+	tail->next = NULL;
+	//Enqueue
+	GHB_node *ptr = (GHB_node*)calloc(1,sizeof(GHB_node));
+	ptr->next = head;
+	head->prev = ptr;
+	head = ptr;
+	ptr->delta = delta;
+//Find the prefetch delta from the GHB buffer
+	GHB_node *found[ISSUE_WIDTH] = {0};
+	//Reverse traversal search
+	for(ptr = tail; ptr != head->next; ptr = ptr->prev){
+		if((ptr->delta == index_table[index]->old_delta) && (ptr->prev->delta == index_table[index]->new_delta)){
+			//Get the next ISSUE_WIDTH number of prefetches
+			int i;
+			ptr = ptr->prev->prev;
+			for(i = 0; i < ISSUE_WIDTH && ptr != NULL; i++){
+				found[i] = ptr;
+				ptr = ptr->prev;
+			}
+			break;
+		}
+	}
+
+//Prefetch at the predicted address
+	int i;
+	for(i = 0; i < ISSUE_WIDTH && found[i] != NULL; i++){
+		md_addr_t next_block_address = CACHE_BADDR(cp,found[i]->delta + addr);
+		if(!cache_probe(cp, next_block_address)){
+			cache_access(cp, Read, next_block_address, NULL, cp->bsize, 0, NULL, NULL, 1);
+		}
+	}
+	return; 
 }
 
 //Function definition for creating a static RPT table

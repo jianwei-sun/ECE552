@@ -153,6 +153,21 @@ typedef struct reference_predictor_table{
 
 //Function prototype for creating static rpt table
 RPT* create_rpt_table(RPT*, int);
+
+//Below is for Open-end
+#define INDEX_TABLE_SIZE 64
+#define GHB_TABLE_SIZE 5
+#define ISSUE_WIDTH 1
+typedef struct GHB_table_node{
+	struct GHB_table_node *next;
+	struct GHB_table_node *prev;
+	md_addr_t delta;
+} GHB_node;
+typedef struct index_table_element{
+	md_addr_t old_delta;
+	md_addr_t new_delta;
+} IT_node;
+
 /* ECE552 Assignment 4 - END CODE*/
 
 
