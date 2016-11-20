@@ -156,8 +156,8 @@ RPT* create_rpt_table(RPT*, int);
 
 //Below is for Open-end
 #define INDEX_TABLE_SIZE 64
-#define GHB_TABLE_SIZE 512
-#define ISSUE_WIDTH 2
+#define GHB_TABLE_SIZE 5
+#define ISSUE_WIDTH 1
 typedef struct GHB_table_node{
 	struct GHB_table_node *next;
 	struct GHB_table_node *prev;

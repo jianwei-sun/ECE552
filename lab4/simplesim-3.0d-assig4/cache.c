@@ -583,6 +583,7 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 			break;
 		}
 	}
+
 //Prefetch at the predicted address
 	int i;
 	for(i = 0; i < ISSUE_WIDTH && found[i] != NULL; i++){
