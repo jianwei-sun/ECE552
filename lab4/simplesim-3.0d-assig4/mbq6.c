@@ -20,11 +20,21 @@ int main(void){
 	asm("$L101:	sltu	$2,$3,$5	");
 	asm("beq	$2, $0, $L201		");
 	asm("lw		$4, 0($3)		");
-	asm("beq	$6, $0, $L102		");
+
+	asm("beq	$6, $0, $L103		");
+	asm("sltiu	$2, $6, 2		");
+	asm("bne	$2, $0, $L102		");
+
 	asm("addu	$3, $3, 64		");
 	asm("addu 	$6, $0, 0		");
 	asm("j		$L101			");
-	asm("$L102:	addu	$3,$3,128	");
+
+	asm("$L102:	addu	$3,$3,64	");
+	asm("addu 	$6, $0, 2		");
+	asm("j		$L101			");
+
+
+	asm("$L103:	addu	$3,$3,128	");
 	asm("addu 	$6, $0, 1		");
 	asm("j		$L101			");
 
@@ -38,11 +48,4 @@ int main(void){
 	asm("j	$L201");
 
 
-/*
-	register int i, b;
-	for(i = 0; i < ITERATIONS; i++){
-		b += i;
-		asm("addu	$4,$4,$3");
-	} 
-	return 0; */
 }
