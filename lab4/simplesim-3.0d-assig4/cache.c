@@ -523,6 +523,7 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 }
 
 /* Open Ended Prefetcher */
+
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	static GHB_node *head = NULL;
 	static GHB_node *tail = NULL;
@@ -555,6 +556,7 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	//Update previous address
 	prev_addr = addr;
 	md_addr_t index = (get_PC() >> 2) % INDEX_TABLE_SIZE;
+	index = 0;
 	index_table[index]->old_delta = index_table[index]->new_delta;
 	index_table[index]->new_delta = delta;	
 //Update the GHB buffer
