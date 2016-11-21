@@ -13,6 +13,8 @@ int main(void){
 	asm("$L101:	sltu	$2,$3,$5");
 	asm("beq	$2,$0,$L1");
 	asm("lw		$4,0($3)");
+	asm("addu	$3,$3,64");
+	asm("lw		$4,0($3)");
 	asm("addu	$3,$3,128");
 	asm("j	$L101");
 
