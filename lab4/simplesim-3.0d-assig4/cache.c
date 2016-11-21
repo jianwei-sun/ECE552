@@ -527,7 +527,7 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	static GHB_node *head = NULL;
 	static GHB_node *tail = NULL;
-	static IT_node* index_table[INDEX_TABLE_SIZE];
+	static IT_node* index_table;
 	static int initialized = 0;
 	static md_addr_t prev_addr = 0;
 //Create all the tables if they do not already exist
@@ -544,9 +544,8 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 		}
 		tail = ptr;
 		//Create the index table 
-		for(i = 0; i < INDEX_TABLE_SIZE; i++){
-			index_table[i] = (IT_node*)calloc(1,sizeof(IT_node));
-		}
+		index_table = (IT_node*)calloc(1,sizeof(IT_node));
+
 		//Set initialized flag
 		initialized = 1;
 	}
@@ -555,10 +554,9 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	md_addr_t delta = addr - prev_addr;
 	//Update previous address
 	prev_addr = addr;
-	md_addr_t index = (get_PC() >> 2) % INDEX_TABLE_SIZE;
-	index = 0;
-	index_table[index]->old_delta = index_table[index]->new_delta;
-	index_table[index]->new_delta = delta;	
+	md_addr_t index = 0;
+	index_table->old_delta = index_table->new_delta;
+	index_table->new_delta = delta;	
 //Update the GHB buffer
 	//Dequeue
 	tail = tail->prev;
@@ -574,7 +572,7 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	GHB_node *found[ISSUE_WIDTH] = {0};
 	//Reverse traversal search
 	for(ptr = tail; ptr != head->next; ptr = ptr->prev){
-		if((ptr->delta == index_table[index]->old_delta) && (ptr->prev->delta == index_table[index]->new_delta)){
+		if((ptr->delta == index_table->old_delta) && (ptr->prev->delta == index_table->new_delta)){
 			//Get the next ISSUE_WIDTH number of prefetches
 			int i;
 			ptr = ptr->prev->prev;
