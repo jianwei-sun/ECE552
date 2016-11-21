@@ -14,15 +14,15 @@ int main(void){
 
 	asm("move	$3,$sp			");
 	asm("move	$7,$sp			");
-	asm("addu	$7, $7, 128000000	"); //$7 and $10 are used for case 2
+	asm("addu	$7, $7, 12800000	"); //$7 and $10 are used for case 2
 	asm("move	$10, $7			");	
 
 /*
 	Set the loop interations
 */
 
-	asm("addu	$5, $sp, 128000000	");
-	asm("addu	$9, $sp, 384000000	");
+	asm("addu	$5, $sp, 12800000	");
+	asm("addu	$9, $sp, 38400000	");
 
 /*
 	Case 1: We will fetch unequal strides of 1,2,1,2... block sizes. 
