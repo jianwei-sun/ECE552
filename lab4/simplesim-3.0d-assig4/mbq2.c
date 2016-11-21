@@ -36,10 +36,10 @@ int main(void){
 	asm("lw		$4, 0($3)		"); //memory access
 	asm("beq	$6, $0, $L102		"); //check flag so every 2nd time, index increments by 2 blocks
 	asm("addu	$3, $3, 64		"); //if beq not taken every other iteration; here we increment index by 1
-	asm("addu 	$6, $0, 0		");
+	asm("addu 	$6, $0, 0		"); //update flag
 	asm("j		$L101			");
-	asm("$L102:	addu	$3,$3,128	");
-	asm("addu 	$6, $0, 1		");
+	asm("$L102:	addu	$3,$3,128	"); //increment by 2 block sizes
+	asm("addu 	$6, $0, 1		"); //update flag
 	asm("j		$L101			");
 /*
 	Case 2: We will fetch unequal strides of 1,2,1,2... block sizes, 
