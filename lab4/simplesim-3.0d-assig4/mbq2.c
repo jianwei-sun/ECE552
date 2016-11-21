@@ -3,7 +3,9 @@
 
 #define ITERATIONS 100
 
-//Microbenchmark program to test for reliability of next line prefetching
+//Microbenchmark program to test for reliability of stride prefetching
+
+// /cad2/ece552f/compiler/bin/ssbig-na-sstrix-gcc mbq2.c -O0 -o mbq2
 
 int main(void){
 		

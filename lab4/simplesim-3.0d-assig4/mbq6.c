@@ -1,9 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define ITERATIONS 100
-
-//Microbenchmark program to test for reliability of next line prefetching
+// Microbenchmark program to test for reliability of open-ended prefetcher
+// /cad2/ece552f/compiler/bin/ssbig-na-sstrix-gcc mbq6.c -O0 -o mbq6
 
 int main(void){
 
@@ -35,7 +34,7 @@ int main(void){
 	asm("move	$6, $0			"); // $6 is a flag that takes on 0, 1, 2 to create the pattern
 	asm("$L101:	sltu	$2,$3,$5	"); 
 	asm("beq	$2, $0, $L201		");
-	//asm("lw		$4, 0($3)		"); // memory access
+	asm("lw		$4, 0($3)		"); // memory access
 
 	asm("beq	$6, $0, $L103		"); // if $6 == 0 , go to $L103
 	asm("sltiu	$2, $6, 2		");
@@ -64,22 +63,22 @@ int main(void){
 
 	asm("$L201:	sltu	$2,$7,$9	");
 	asm("beq	$2,$0,$L301		");
-	//asm("lw		$8,0($7)		"); // memory access that jumps every 2 block sizes
-	//asm("lw		$8,0($10)		"); // memory access that jumpes every 1 block size
+	asm("lw		$8,0($7)		"); // memory access that jumps every 2 block sizes
+	asm("lw		$8,0($10)		"); // memory access that jumpes every 1 block size
 	asm("addu	$7,$7,128		"); // increment by 2 block sizes
 	asm("addu	$10,$10,64		"); // increment by 1 block size
 	asm("j	$L201");
 
 /*
-	Case 3: This case jumps in a pattern of 1 1 1 1 2 block sizes. Because the tables only remembers the last two histories,
-		and matches it with the latest calls on the GHB, it will see 1 1 and expect a two, when 4/5 of the time, the next delta is a 1. 
+	Case 3: This case jumps in a pattern of 1 1 1 1 2 block sizes. Because the GBH can only keep track of the last 5 histories, and 
+		the index tables only remembers the last two histories, and matches it with the latest calls on the GHB, 
+		it will see 1 1 and expect a two, when 4/5 of the time, the next delta is a 1. 
 		This would result in a hit only 1/5th of the time. This loop runs 200k times, and accesses memory 1 M times. It should produce
 		200k hits and 800k misses
 */
 
 	asm("$L301:	sltu	$2,$11,$13	");
 	asm("beq	$2,$0,$L1		");
-	asm("lw		$12,0($11)		"); //memory access
 	asm("addu	$11,$11,64		"); //increment by 1 block size
 	asm("lw		$12,0($11)		"); //memory access again
 	asm("addu	$11,$11,64		"); //increment by 1 block sizes
@@ -88,7 +87,8 @@ int main(void){
 	asm("lw		$12,0($11)		"); //memory access again
 	asm("addu	$11,$11,64		"); //increment by 1 block sizes
 	asm("lw		$12,0($11)		"); //memory access again
-	asm("addu	$11,$11,128		"); //increment by 2 block sizes	
+	asm("addu	$11,$11,128		"); //increment by 2 block sizes
+	asm("lw		$12,0($11)		"); //memory access	
 	asm("j	$L301");
 
 

@@ -5,6 +5,8 @@
 
 //Microbenchmark program to test for reliability of next line prefetching
 
+// /cad2/ece552f/compiler/bin/ssbig-na-sstrix-gcc mbq1.c -O0 -o mbq1
+
 int main(void){
 		
 /*
