@@ -40,13 +40,20 @@ machine(Directory, "Directory protocol")
     I, AccessPermission:Invalid, desc="Not Present/Invalid";
     M, AccessPermission:Read_Write, desc="Modified";
 
-    /* ECE552: Complete this section here */
 
+    /* ECE552: Complete this section here */
+	S, AccessPermission:Read_Only, desc="Shared block";
     //========================
     //ECE552: Transient States
     //========================
 
     /* ECE552: Complete this section here */
+	IS_D, AccessPermission:Busy, desc="Invalid to Shared Transient, Waiting for Memory Data";
+	IM_D, AccessPermission:Busy, desc="Invalid to Modified Transient, Waiting for Memory Data";
+	MS_D, AccessPermission:Busy, desc="Modified to Shared Transient, Waiting for Data";
+	MS_A, AccessPermission:Busy, desc="Modified to Shared Transient, Waiting for Memory Ack";
+	SI_A, AccessPermission:Busy, desc="Shared to Invalid Transient, Waiting for Memory Ack";
+	MI_A, AccessPermission:Busy, desc="Modified to Invalid Transient, Waiting for Memory Ack";
   }
 
   // =============================================================================
@@ -535,6 +542,148 @@ getDirectoryEntry(address).Sharers);
   // =============================================================================
 
   /* ECE552: Complete this section here */
+	transition(I, GETS, IS_D){
+		qf_queueMemoryFetchRequest;
+		i_popIncomingRequestQueue;
+	}
+	transition(I, GETM, IM_D){
+		qf_queueMemoryFetchRequest;
+		i_popIncomingRequestQueue;
+	}
+	transition(I, PUTS_NotLast){
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
+	transition(I, PUTS_Last){
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
+	transition(I, PUTM_NotOwner){
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
 
+	transition(IS_D, {GETS, GETM}){
+		z_stall;
+	}
+	transition(IS_D, Memory_Data, S){
+		d_sendData;
+		ars1_addRequestorToSharers;
+		qm_popMemQueue;
+	}
+	
+	transition(S, GETS){
+		ds_sendSharedData;
+		ars2_addRequestorToSharers;
+		i_popIncomingRequestQueue;
+	}
+	transition(S, GETM, M){
+		ds2_sendSharedData;
+		fwm_sendFwdInvToSharersMinusRequestor;
+		cs_clearSharers;
+		e_ownerIsRequestor;
+		i_popIncomingRequestQueue;
+	}
+	transition(S, PUTS_NotLast){
+		kk_removeRequestSharer;
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
+	transition(S, PUTS_Last, SI_A){
+		lq_queueMemoryWBRequest;
+		i_popIncomingRequestQueue;
+	}
+	transition(S, PUTM_NotOwner){
+		kk_removeRequestSharer;
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
 
+	transition(IM_D, {GETS, GETM}){
+		z_stall;
+	}
+	transition(IM_D, Memory_Data, M){
+		d_sendData;
+		e_ownerIsRequestor;
+		qm_popMemQueue;
+	}
+
+	transition(M, GETS, MS_D){
+		f_forwardRequest;
+		ars2_addRequestorToSharers;
+		aos_addOwnertoSharers;
+		c_clearOwner;
+		//vv_allocateTBEFromRequestNet;
+		i_popIncomingRequestQueue;	
+	}
+	transition(M, GETM){
+		f_forwardRequest;
+		e_ownerIsRequestor;
+		i_popIncomingRequestQueue;
+	}
+	transition(M, {PUTS_NotLast, PUTS_Last, PUTM_NotOwner}){
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
+	transition(M, PUTM_Owner, MI_A){
+		lq_queueMemoryWBRequest;
+		i_popIncomingRequestQueue;
+	}
+
+	transition(MS_D, {GETS, GETM}){
+		z_stall;
+	}
+	transition(MS_D, {PUTS_NotLast, PUTS_Last, PUTM_NotOwner}){
+		kk_removeRequestSharer;
+		a_sendWriteBackAck;
+		i_popIncomingRequestQueue;
+	}
+	transition(MS_D, Data, MS_A){
+		lq2_queueMemoryWBRequest;
+		pr_popIncomingResponseQueue;
+	}
+
+	transition(MS_A, {GETS, GETM}){
+		ds_sendSharedData;
+		ars2_addRequestorToSharers;
+		i_popIncomingRequestQueue;
+	}
+	transition(MS_A, Memory_Ack, S){
+		qm_popMemQueue;
+	}
+
+	transition(SI_A, {GETS, GETM}){
+		z_stall;
+	}
+	transition(SI_A, Memory_Ack, I){
+		kk_removeRequestSharer;
+		la_sendWriteBackAck;
+		qm_popMemQueue;
+	}
+
+	transition(MI_A, {GETS, GETM}){
+		z_stall;
+	}
+	transition(MI_A, Memory_Ack, I){
+		c_clearOwner;
+		la_sendWriteBackAck;
+		qm_popMemQueue;
+	}
 }
+/*
+    GETM, desc="A GETM arrives";
+    GETS, desc="A GETS arrives";
+    PUTM, desc="A PUTM arrives";
+    PUTM_Owner, desc="A PUTM arrives from Owner";
+    PUTM_NotOwner, desc="A PUTM arrives";
+
+    PUTS_NotLast, desc="A PUTS_NotLast arrives";
+    PUTS_Last, desc="A PUTS_Last arrives";
+    PUT_Ack, desc="Sending a PUT_Ack message";
+
+    // Memory Controller
+    Memory_Data, desc="Fetched data from memory arrives";
+    Memory_Ack, desc="Writeback Ack from memory arrives";
+
+    Data, desc="Data sent from L1 Cache";
+*/
