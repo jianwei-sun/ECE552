@@ -612,30 +612,43 @@ machine(L1Cache, "MSI L1 Cache")
 
   /* ECE552: Complete this section here */
  	transition(I, Load, IS_D){
+		p_profileMiss;
 		as_issueGetS;
+		m_popMandatoryQueue;
 	}	
 	transition(I, Store, IM_AD){
+		p_profileMiss;
 		am_issueGetM;
+		m_popMandatoryQueue;
 	}
 
 	transition(IS_D, {Load, Store, Replacement, Inv}){
 		z_stall;
 	}
 	transition(IS_D, {Data_from_Dir_No_Acks, Data_from_Owner}, S){
-
+		i_allocateL1CacheBlock;
+		u_writeDataToCache;
+		n_pop_ResponseQueue;
 	}
 
 	transition(IM_AD, {Load, Store, Replacement, Fwd_GetS, Fwd_GetM}){
 		z_stall;
 	}
 	transition(IM_AD, {Data_from_Dir_No_Acks, Data_from_Owner}, M){
-	
+		i_allocateL1CacheBlock;
+		u_writeDataToCache;
+		n_pop_ResponseQueue;	
 	}
 	transition(IM_AD, Data_from_Dir_Ack_Cnt, IM_A){
-
+		v_allocateTBE;
+		//Is there an action for copying from data to the TBE? - Posted to Piazza
+		n_pop_ResponseQueue;
 	}
 	transition(IM_AD, Inv_Ack){
 		q_updateAckCount;
+		//Why is there not a case for Last-Inv-Ack in IM_AD? All the acks might come before 
+		//the data. The fact there's an Inv_Ack means some acks come before the Data
+		n_pop_ResponseQueue;
 	}
 
 	transition(IM_A, {Load, Store, Replacement, Fwd_GetS, Fwd_GetM}){
@@ -643,71 +656,112 @@ machine(L1Cache, "MSI L1 Cache")
 	}
 	transition(IM_A, Inv_Ack){
 		q_updateAckCount;
+		n_pop_ResponseQueue;
 	}
 	transition(IM_A, Inv_Ack_all, M){
-		
+		i_allocateL1CacheBlock;
+		w_deallocateTBE;
+		n_pop_ResponseQueue;	
 	}
 
 	transition(S, Load){
 		r_load_hit;
+		m_popMandatoryQueue;
 	}
 	transition(S, Store, SM_AD){
+		v_allocateTBE;
+		x_copyDataFromCacheToTBE;
+		h_deallocateL1CacheBlock;
 		am_issueGetM;
+		//Do we have to service the store? Ie, do a sx_store_hit?
+		m_popMandatoryQueue;
 	}
 	transition(S, Replacement, SI_A){
 		bs_issuePUTS;
+		v_allocateTBE;
+		x_copyDataFromCacheToTBE;
+		h_deallocateL1CacheBlock;
 	}
 	transition(S, Inv, I){
+		h_deallocateL1CacheBlock;
 		fi_sendInvAck;
+		//Do we need a forward_eviction_to_cpu?
+		o_popForwardedRequestQueue;
 	}
 
 	transition(SM_AD, Load){
 		rx_load_hit;
+		//The data block is in the TBE, so is it rx_load_hit or r_load_hit?
+		m_popMandatoryQueue;
 	}
 	transition(SM_AD, {Store, Replacement, Fwd_GetS, Fwd_GetM}){
 		z_stall;
 	}
 	transition(SM_AD, Inv, IM_AD){
+		//We need to remove the block from the TBE but w_deallocateTBE says the block 
+		//is now in a stable coherence state...
 		fi_sendInvAck;	
+		//Do we need a forward_eviction_to_cpu?
+		o_popForwardedRequestQueue;
 	}
 	transition(SM_AD, {Data_from_Dir_No_Acks, Data_from_Owner}, M){
-
+		//Do we need to deallocate the TBE?
+		i_allocateL1CacheBlock;
+		u_writeDataToCache;
+		n_pop_ResponseQueue;
 	}
 	transition(SM_AD, Data_from_Dir_Ack_Cnt, SM_A){
-
+		v_allocateTBE;
+		n_pop_ResponseQueue;
 	}
 	transition(SM_AD, Inv_Ack){
 		q_updateAckCount;
+		n_pop_ResponseQueue;
 	}
 
 	transition(SM_A, Load){
 		rx_load_hit;
+		//The data block is in the TBE, so is it rx_load_hit or r_load_hit?
+		m_popMandatoryQueue;
 	}
 	transition(SM_A, {Store, Replacement, Fwd_GetS, Fwd_GetM}){
 		z_stall;
 	}
 	transition(SM_A, Inv_Ack){
 		q_updateAckCount;
+		n_pop_ResponseQueue;
 	}
 	transition(SM_A, Inv_Ack_all, M){
-
+		i_allocateL1CacheBlock;
+		w_deallocateTBE;
+		n_pop_ResponseQueue;
 	}
 
 	transition(M, Load){
 		r_load_hit;
+		m_popMandatoryQueue;
 	}
 	transition(M, Store){
 		s_store_hit;
+		m_popMandatoryQueue;
 	}
 	transition(M, Replacement, MI_A){
 		bm_issuePUTM;	
+		v_allocateTBE;
+		x_copyDataFromCacheToTBE;
+		h_deallocateL1CacheBlock;
+		//Need forward_eviction_to_cpu?
 	}
 	transition(M, Fwd_GetS, S){
 		e_sendDataFromCacheToRequestor;
 		de_sendDataFromCacheToDir;
+		o_popForwardedRequestQueue;
 	}
 	transition(M, Fwd_GetM, I){
 		e_sendDataFromCacheToRequestor;
+		h_deallocateL1CacheBlock;
+		//Need forward_eviction_to_cpu?	
+		o_popForwardedRequestQueue;
 	}
 
 	transition(MI_A, {Load, Store, Replacement}){
@@ -716,12 +770,16 @@ machine(L1Cache, "MSI L1 Cache")
 	transition(MI_A, Fwd_GetS, SI_A){
 		ee_sendDataFromTBEToRequestor;
 		dee_sendDataFromTBEToDir;
+		o_popForwardedRequestQueue;
 	}
 	transition(MI_A, Fwd_GetM, II_A){
 		ee_sendDataFromTBEToRequestor;
+		o_popForwardedRequestQueue;
 	}
 	transition(MI_A, WB_Ack, I){
-
+		w_deallocateTBE;
+		//Need forward_eviction_to_cpu?
+		o_popForwardedRequestQueue;
 	}
 
 	transition(SI_A, {Load, Store, Replacement}){
@@ -729,15 +787,20 @@ machine(L1Cache, "MSI L1 Cache")
 	}
 	transition(SI_A, Inv, II_A){
 		fi_sendInvAck;
+		o_popForwardedRequestQueue;
 	}
 	transition(SI_A, WB_Ack, I){
-
+		w_deallocateTBE;
+		//Need forward_eviction_to_cpu?
+		o_popForwardedRequestQueue;
 	}
 
 	transition(II_A, {Load, Store, Replacement}){
 		z_stall;
 	}
 	transition(II_A, WB_Ack, I){
-
+		w_deallocateTBE;
+		//Need forward_eviction_to_cpu?
+		o_popForwardedRequestQueue;
 	}
 }

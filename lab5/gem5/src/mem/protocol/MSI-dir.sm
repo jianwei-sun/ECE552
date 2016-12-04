@@ -1,4 +1,3 @@
-
 machine(Directory, "Directory protocol") 
 : DirectoryMemory * directory,
   MemoryControl * memBuffer,
