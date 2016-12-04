@@ -32,7 +32,7 @@ machine(Directory, "Directory protocol")
   //=============================================================
 
   state_declaration(State, desc="Directory states", default="Directory_State_I") {
-
+/* ECE552 Assignment 5 - BEGIN CODE */
     //=====================
     //ECE552: Stable States
     //=====================
@@ -52,10 +52,9 @@ machine(Directory, "Directory protocol")
 	IM_D, AccessPermission:Busy, desc="Invalid to Modified Transient, Waiting for Memory Data";
 	MS_D, AccessPermission:Busy, desc="Modified to Shared Transient, Waiting for Data";
 	MS_A, AccessPermission:Busy, desc="Modified to Shared Transient, Waiting for Memory Ack";
-	SI_A, AccessPermission:Busy, desc="Shared to Invalid Transient, Waiting for Memory Ack";
 	MI_A, AccessPermission:Busy, desc="Modified to Invalid Transient, Waiting for Memory Ack";
   }
-
+/* ECE552 Assignment 5 - END CODE */
   // =============================================================================
   // EVENTS
   // =============================================================================
@@ -536,17 +535,23 @@ getDirectoryEntry(address).Sharers);
     }
   }
 
-
+/* ECE552 Assignment 5 - BEGIN CODE */
   // =============================================================================
   // TRANSITIONS
   // =============================================================================
-
   /* ECE552: Complete this section here */
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE I            
+	////////////////////////////////////////////////////////
 	transition(I, GETS, IS_D){
+		vv_allocateTBEFromRequestNet;
+		ars2_addRequestorToSharers;
 		qf_queueMemoryFetchRequest;
 		i_popIncomingRequestQueue;
 	}
 	transition(I, GETM, IM_D){
+		vv_allocateTBEFromRequestNet;
+		e_ownerIsRequestor;
 		qf_queueMemoryFetchRequest;
 		i_popIncomingRequestQueue;
 	}
@@ -562,16 +567,20 @@ getDirectoryEntry(address).Sharers);
 		a_sendWriteBackAck;
 		i_popIncomingRequestQueue;
 	}
-
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE IS_D            
+	////////////////////////////////////////////////////////
 	transition(IS_D, {GETS, GETM}){
 		z_stall;
 	}
 	transition(IS_D, Memory_Data, S){
+		w_deallocateTBE;
 		d_sendData;
-		ars1_addRequestorToSharers;
 		qm_popMemQueue;
 	}
-	
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE S            
+	////////////////////////////////////////////////////////
 	transition(S, GETS){
 		ds_sendSharedData;
 		ars2_addRequestorToSharers;
@@ -589,8 +598,9 @@ getDirectoryEntry(address).Sharers);
 		a_sendWriteBackAck;
 		i_popIncomingRequestQueue;
 	}
-	transition(S, PUTS_Last, SI_A){
-		lq_queueMemoryWBRequest;
+	transition(S, PUTS_Last, I){
+		kk_removeRequestSharer;
+		a_sendWriteBackAck;
 		i_popIncomingRequestQueue;
 	}
 	transition(S, PUTM_NotOwner){
@@ -598,22 +608,26 @@ getDirectoryEntry(address).Sharers);
 		a_sendWriteBackAck;
 		i_popIncomingRequestQueue;
 	}
-
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE IM_D            
+	////////////////////////////////////////////////////////
 	transition(IM_D, {GETS, GETM}){
 		z_stall;
 	}
 	transition(IM_D, Memory_Data, M){
+		w_deallocateTBE;
 		d_sendData;
-		e_ownerIsRequestor;
 		qm_popMemQueue;
 	}
-
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE M            
+	////////////////////////////////////////////////////////
 	transition(M, GETS, MS_D){
 		f_forwardRequest;
 		ars2_addRequestorToSharers;
 		aos_addOwnertoSharers;
 		c_clearOwner;
-		//vv_allocateTBEFromRequestNet;
+		vv_allocateTBEFromRequestNet;
 		i_popIncomingRequestQueue;	
 	}
 	transition(M, GETM){
@@ -627,63 +641,50 @@ getDirectoryEntry(address).Sharers);
 	}
 	transition(M, PUTM_Owner, MI_A){
 		lq_queueMemoryWBRequest;
+		pl_writeDataToDirectory;
+		vv_allocateTBEFromRequestNet;
 		i_popIncomingRequestQueue;
 	}
-
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE MS_D            
+	////////////////////////////////////////////////////////
 	transition(MS_D, {GETS, GETM}){
 		z_stall;
 	}
-	transition(MS_D, {PUTS_NotLast, PUTS_Last, PUTM_NotOwner}){
+	transition(MS_D, {PUTS_NotLast, PUTM_Owner, PUTM_NotOwner}){
 		kk_removeRequestSharer;
 		a_sendWriteBackAck;
 		i_popIncomingRequestQueue;
 	}
-	transition(MS_D, Data, MS_A){
-		lq2_queueMemoryWBRequest;
-		pr_popIncomingResponseQueue;
-	}
-
-	transition(MS_A, {GETS, GETM}){
-		ds_sendSharedData;
-		ars2_addRequestorToSharers;
-		i_popIncomingRequestQueue;
-	}
-	transition(MS_A, Memory_Ack, S){
-		qm_popMemQueue;
-	}
-
-	transition(SI_A, {GETS, GETM}){
+	transition(MS_D, PUTS_Last){
 		z_stall;
 	}
-	transition(SI_A, Memory_Ack, I){
-		kk_removeRequestSharer;
-		la_sendWriteBackAck;
+	transition(MS_D, Data, MS_A){
+		lq2_queueMemoryWBRequest;
+		pl2_writeDataToDirectory;
+		pr_popIncomingResponseQueue;
+	}
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE MS_A            
+	////////////////////////////////////////////////////////
+	transition(MS_A, {GETS, GETM}){
+		z_stall;
+	}
+	transition(MS_A, Memory_Ack, S){
+		w_deallocateTBE;
 		qm_popMemQueue;
 	}
-
+	////////////////////////////////////////////////////////
+	//                TRANSITIONS FROM STATE MI_A            
+	////////////////////////////////////////////////////////
 	transition(MI_A, {GETS, GETM}){
 		z_stall;
 	}
 	transition(MI_A, Memory_Ack, I){
+		w_deallocateTBE;
 		c_clearOwner;
 		la_sendWriteBackAck;
 		qm_popMemQueue;
 	}
+/* ECE552 Assignment 5 - END CODE */
 }
-/*
-    GETM, desc="A GETM arrives";
-    GETS, desc="A GETS arrives";
-    PUTM, desc="A PUTM arrives";
-    PUTM_Owner, desc="A PUTM arrives from Owner";
-    PUTM_NotOwner, desc="A PUTM arrives";
-
-    PUTS_NotLast, desc="A PUTS_NotLast arrives";
-    PUTS_Last, desc="A PUTS_Last arrives";
-    PUT_Ack, desc="Sending a PUT_Ack message";
-
-    // Memory Controller
-    Memory_Data, desc="Fetched data from memory arrives";
-    Memory_Ack, desc="Writeback Ack from memory arrives";
-
-    Data, desc="Data sent from L1 Cache";
-*/
